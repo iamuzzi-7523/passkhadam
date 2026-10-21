@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="referrer" content="no-referrer" />
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🆔</text></svg>" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PASSKHADAM — Decentralized Worker Identity Platform</title>
+  </head>
+  <body class="bg-slate-900 text-slate-100 min-h-screen">
+    <div id="root"></div>
+    <script>
+      window.addEventListener('error', function(e) {
+        var root = document.getElementById('root');
+        if (root && (!root.innerHTML || root.innerHTML.trim() === '')) {
+          root.innerHTML = '<div style="font-family:sans-serif;max-width:540px;margin:80px auto;padding:24px;background:#1e293b;border:1px solid #ef4444;border-radius:16px;color:#f8fafc;text-align:center;">' +
+            '<h2 style="color:#ef4444;margin-top:0;">⚠️ Interface Initialization Notice</h2>' +
+            '<p style="font-size:14px;color:#cbd5e1;">A runtime script error occurred: <code style="color:#f87171;background:#0f172a;padding:2px 6px;border-radius:4px;">' + (e.message || 'Unknown error') + '</code></p>' +
+            '<button onclick="localStorage.clear();location.reload();" style="margin-top:12px;padding:8px 16px;background:#2563eb;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:600;">Clear Cache & Reload</button>' +
+            '</div>';
+        }
+      });
+    </script>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

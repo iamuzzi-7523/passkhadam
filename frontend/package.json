@@ -1,0 +1,56 @@
+{
+  "name": "passkhadam-frontend",
+  "private": true,
+  "version": "0.2.0",
+  "type": "module",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "electron:dev": "electron .",
+    "dist:win:portable": "vite build && electron-builder --win portable"
+  },
+  "dependencies": {
+    "firebase": "^12.19.0",
+    "lucide-react": "^1.16.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "autoprefixer": "^10.4.20",
+    "electron": "^33.2.1",
+    "electron-builder": "^25.1.8",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.17",
+    "vite": "^6.0.7"
+  },
+  "build": {
+    "appId": "org.passkhadam.app",
+    "productName": "PassKhadam",
+    "directories": {
+      "output": "dist-electron"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "sign": null,
+      "artifactName": "PassKhadam-Portable-${version}.${ext}"
+    },
+    "portable": {
+      "artifactName": "PassKhadam-Portable-${version}.${ext}"
+    }
+  }
+}
