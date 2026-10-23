@@ -107,6 +107,8 @@ export default function WorkerPortal({ currentLang = 'en' }) {
   const [profile, setProfile] = useState(null);
   const [wallet, setWallet] = useState(null);
   const [qrData, setQrData] = useState(null);
+  const [qrLoading, setQrLoading] = useState(false);
+  const [qrError, setQrError] = useState("");
   const [timerSeconds, setTimerSeconds] = useState(300);
   const [loading, setLoading] = useState(true);
   const [verifyingAadhaar, setVerifyingAadhaar] = useState(false);
@@ -158,16 +160,28 @@ export default function WorkerPortal({ currentLang = 'en' }) {
 
           // Revalidate dynamic source status before fetching QR presentation
           if (p.aadhaar_status === 'ACTIVE') {
-            const qrRes = await apiFetch('/api/v1/worker/presentation/qr-card/me');
-            if (qrRes.ok) {
-              const q = await qrRes.json();
-              setQrData(q);
-              setTimerSeconds(q.expires_in_seconds || 300);
-            } else {
+            setQrLoading(true);
+            try {
+              const qrRes = await apiFetch('/api/v1/worker/presentation/qr-card/me');
+              if (qrRes.ok) {
+                const q = await qrRes.json();
+                setQrData(q);
+                setTimerSeconds(q.expires_in_seconds || 300);
+                setQrError("");
+              } else {
+                setQrData(null);
+                const err = await qrRes.json().catch(() => ({}));
+                setQrError(err.detail || "Unable to generate QR presentation.");
+              }
+            } catch (err) {
               setQrData(null);
+              setQrError("Network error loading QR presentation.");
+            } finally {
+              setQrLoading(false);
             }
           } else {
             setQrData(null);
+            setQrError("");
           }
         } else {
           setQrData(null);
@@ -310,6 +324,8 @@ export default function WorkerPortal({ currentLang = 'en' }) {
   };
 
   const handleRefreshQr = async () => {
+    setQrLoading(true);
+    setQrError("");
     try {
       // Re-fetch entire worker profile to get authoritative live status
       const profRes = await apiFetch('/api/v1/worker/profile/me');
@@ -318,7 +334,7 @@ export default function WorkerPortal({ currentLang = 'en' }) {
         setProfile(p);
         if (p.aadhaar_status !== 'ACTIVE') {
           setQrData(null);
-          setErrorMsg(`QR Presentation locked: Source Aadhaar record status is currently ${p.aadhaar_status}.`);
+          setQrError(`QR Presentation locked: Source Aadhaar record status is currently ${p.aadhaar_status}.`);
           return;
         }
       }
@@ -328,16 +344,18 @@ export default function WorkerPortal({ currentLang = 'en' }) {
         const q = await res.json();
         setQrData(q);
         setTimerSeconds(q.expires_in_seconds || 300);
-        setErrorMsg("");
+        setQrError("");
       } else {
         setQrData(null);
         const err = await res.json().catch(() => ({}));
-        setErrorMsg(err.detail || "Unable to generate QR presentation.");
+        setQrError(err.detail || "Unable to generate QR presentation.");
       }
     } catch (e) {
       setQrData(null);
       console.error(e);
-      setErrorMsg("Network error generating fresh QR presentation.");
+      setQrError("Network error generating fresh QR presentation.");
+    } finally {
+      setQrLoading(false);
     }
   };
 
@@ -1015,10 +1033,11 @@ export default function WorkerPortal({ currentLang = 'en' }) {
               </div>
               <button
                 onClick={handleRefreshQr}
-                className="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1"
+                disabled={qrLoading}
+                className="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1 disabled:opacity-50"
                 title="Generate Fresh QR Presentation"
               >
-                <RefreshCw className="w-3.5 h-3.5" />
+                <RefreshCw className={`w-3.5 h-3.5 ${qrLoading ? 'animate-spin' : ''}`} />
                 <span>Refresh</span>
               </button>
             </div>
@@ -1029,7 +1048,13 @@ export default function WorkerPortal({ currentLang = 'en' }) {
 
             {profile?.is_credential_anchored ? (
               profile?.aadhaar_status === 'ACTIVE' ? (
-                qrData ? (
+                qrLoading ? (
+                  <div className="text-center py-12 text-slate-400 space-y-3">
+                    <RefreshCw className="w-8 h-8 mx-auto animate-spin text-blue-400" />
+                    <p className="text-xs font-medium">Generating verified presentation card...</p>
+                    <p className="text-[11px] text-slate-500">Retrieving signed zero-knowledge credential from network...</p>
+                  </div>
+                ) : qrData ? (
                   <div className="space-y-4">
                     {/* QR Display Card */}
                     <div className="bg-white rounded-2xl p-4 shadow-xl flex flex-col items-center justify-center space-y-2">
@@ -1079,14 +1104,31 @@ export default function WorkerPortal({ currentLang = 'en' }) {
                     </div>
                   </div>
                 ) : (
-                  <div className="text-center py-10 text-slate-400 space-y-3">
-                    <RefreshCw className="w-8 h-8 mx-auto animate-spin text-blue-400" />
-                    <p className="text-xs">Generating verified presentation card...</p>
+                  <div className="text-center py-8 text-slate-400 space-y-4">
+                    {qrError && (
+                      <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs">
+                        <div className="flex items-center justify-center gap-1.5 font-semibold text-rose-300 mb-1">
+                          <AlertTriangle className="w-4 h-4 text-rose-400" />
+                          <span>Generation Notice</span>
+                        </div>
+                        <p>{qrError}</p>
+                      </div>
+                    )}
+                    <div className="p-4 rounded-xl bg-slate-950/60 border border-slate-800 text-xs text-slate-300 space-y-2">
+                      <QrCode className="w-8 h-8 mx-auto text-blue-400" />
+                      <p className="font-semibold text-white">Identity Presentation QR</p>
+                      <p className="text-slate-400 text-[11px]">
+                        Generate a cryptographically verifiable QR presentation valid for 5 minutes.
+                      </p>
+                    </div>
                     <button
+                      type="button"
                       onClick={handleRefreshQr}
-                      className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold"
+                      disabled={qrLoading}
+                      className="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-semibold text-xs transition-all shadow-md shadow-blue-600/20 flex items-center justify-center gap-2"
                     >
-                      Generate QR
+                      <RefreshCw className="w-4 h-4" />
+                      <span>Generate QR Code</span>
                     </button>
                   </div>
                 )
