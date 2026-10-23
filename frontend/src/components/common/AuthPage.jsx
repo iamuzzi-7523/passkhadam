@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { getTranslation } from '../../i18n/translations';
+import { apiFetch } from '../../utils/api';
 
 export default function AuthPage({ currentLang = 'en', onRoleSelect }) {
   const { login, register, resetPassword, sendPhoneOtp, verifyPhoneOtp, sendEmailOtp, verifyEmailOtp, checkFirebaseEmailStatus, loading } = useAuth();
@@ -271,7 +272,7 @@ export default function AuthPage({ currentLang = 'en', onRoleSelect }) {
     e.preventDefault();
     setErrorMsg(null);
     try {
-      const res = await fetch('/api/v1/auth/activate-employer', {
+      const res = await apiFetch('/api/v1/auth/activate-employer', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -294,8 +295,8 @@ export default function AuthPage({ currentLang = 'en', onRoleSelect }) {
           setErrorMsg(detailMsg);
         }
       }
-    } catch {
-      setErrorMsg('Network error during activation');
+    } catch (err) {
+      setErrorMsg(err.message || 'Network error during activation');
     }
   };
 
@@ -320,7 +321,7 @@ export default function AuthPage({ currentLang = 'en', onRoleSelect }) {
 
     try {
       setActivatingGov(true);
-      const res = await fetch('/api/v1/government/activate', {
+      const res = await apiFetch('/api/v1/government/activate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -350,8 +351,8 @@ export default function AuthPage({ currentLang = 'en', onRoleSelect }) {
           setErrorMsg(detailMsg);
         }
       }
-    } catch {
-      setErrorMsg('Network error during government officer activation');
+    } catch (err) {
+      setErrorMsg(err.message || 'Network error during government officer activation');
     } finally {
       setActivatingGov(false);
     }

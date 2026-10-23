@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, Server, Database, Globe, CheckCircle2, Activity, RefreshCw } from 'lucide-react';
+import { apiFetch } from '../../utils/api';
 
 export default function NetworkSettingsModal({ isOpen, onClose }) {
   const [config, setConfig] = useState(null);
@@ -9,7 +10,7 @@ export default function NetworkSettingsModal({ isOpen, onClose }) {
 
   useEffect(() => {
     if (isOpen) {
-      fetch('/api/v1/admin/network-config')
+      apiFetch('/api/v1/admin/network-config')
         .then(res => res.json())
         .then(data => {
           setConfig(data);
@@ -25,7 +26,7 @@ export default function NetworkSettingsModal({ isOpen, onClose }) {
     setTesting(true);
     setTestResult(null);
     try {
-      const res = await fetch('/api/v1/admin/test-connectivity', { method: 'POST' });
+      const res = await apiFetch('/api/v1/admin/test-connectivity', { method: 'POST' });
       const data = await res.json();
       setTestResult(data);
     } catch (e) {

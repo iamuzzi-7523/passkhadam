@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Lock, Mail, Phone, User, CheckCircle2, AlertCircle, ArrowRight, Shield, Smartphone, Building2, KeyRound, RefreshCw, Landmark } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { apiFetch } from '../../utils/api';
 
 export default function AuthModal({ isOpen, onClose, onRoleSelect, initialTab = 'login', initialToken = '' }) {
   const { login, register, resetPassword, sendPhoneOtp, verifyPhoneOtp, sendEmailOtp, verifyEmailOtp, checkFirebaseEmailStatus, loading } = useAuth();
@@ -270,7 +271,7 @@ export default function AuthModal({ isOpen, onClose, onRoleSelect, initialTab = 
     e.preventDefault();
     setErrorMsg(null);
     try {
-      const res = await fetch('/api/v1/auth/activate-employer', {
+      const res = await apiFetch('/api/v1/auth/activate-employer', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -293,8 +294,8 @@ export default function AuthModal({ isOpen, onClose, onRoleSelect, initialTab = 
           setErrorMsg(detailMsg);
         }
       }
-    } catch {
-      setErrorMsg('Network error during activation');
+    } catch (err) {
+      setErrorMsg(err.message || 'Network error during activation');
     }
   };
 
@@ -319,7 +320,7 @@ export default function AuthModal({ isOpen, onClose, onRoleSelect, initialTab = 
 
     try {
       setActivatingGov(true);
-      const res = await fetch('/api/v1/government/activate', {
+      const res = await apiFetch('/api/v1/government/activate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -349,8 +350,8 @@ export default function AuthModal({ isOpen, onClose, onRoleSelect, initialTab = 
           setErrorMsg(detailMsg);
         }
       }
-    } catch {
-      setErrorMsg('Network error during government officer activation');
+    } catch (err) {
+      setErrorMsg(err.message || 'Network error during government officer activation');
     } finally {
       setActivatingGov(false);
     }
