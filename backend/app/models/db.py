@@ -558,6 +558,18 @@ class DBWelfareClaim(Base):
 
 # ============================================================================
 # DATABASE INITIALIZATION & PARTIAL INDEX MIGRATION
+
+# ============================================================================
+# 13. DECENTRALIZED IPFS BLOB PERSISTENCE (DBIPFSBlob)
+# ============================================================================
+
+class DBIPFSBlob(Base):
+    __tablename__ = "ipfs_blobs"
+
+    cid = Column(String(100), primary_key=True, index=True)
+    payload = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
 # ============================================================================
 
 def init_db():

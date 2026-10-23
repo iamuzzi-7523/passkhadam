@@ -21,7 +21,7 @@ backend/app/storage/*.db
 backend/app/storage/*.db-shm
 backend/app/storage/*.db-wal
 backend/app/storage/*.sqlite
-backend/app/storage/ipfs_blobs/*.ipfs
+# backend/app/storage/ipfs_blobs/*.ipfs
 !backend/app/storage/ipfs_blobs/.gitkeep
 
 # Build Artifacts & Packaging

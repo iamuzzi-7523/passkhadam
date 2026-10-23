@@ -314,6 +314,33 @@ def on_startup():
         # Synchronize anchored worker profiles from database into active blockchain service
         blockchain_service.sync_from_database(db)
 
+        # Synchronize filesystem IPFS blobs into persistent DBIPFSBlob database table
+        try:
+            from app.models.db import DBIPFSBlob
+            ipfs_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "storage", "ipfs_blobs")
+            if os.path.isdir(ipfs_dir):
+                existing_cids = {row[0] for row in db.query(DBIPFSBlob.cid).all()}
+                new_blobs = []
+                for fname in os.listdir(ipfs_dir):
+                    if fname.endswith(".ipfs"):
+                        cid = fname[:-5]
+                        if cid not in existing_cids:
+                            fpath = os.path.join(ipfs_dir, fname)
+                            try:
+                                with open(fpath, "r", encoding="utf-8") as f:
+                                    content = f.read().strip()
+                                    if content:
+                                        new_blobs.append(DBIPFSBlob(cid=cid, payload=content))
+                                        existing_cids.add(cid)
+                            except Exception:
+                                pass
+                if new_blobs:
+                    db.bulk_save_objects(new_blobs)
+                    db.commit()
+                    logger.info(f"Synchronized {len(new_blobs)} IPFS blobs into persistent database")
+        except Exception as e:
+            logger.warning(f"IPFS blobs database synchronization error: {e}")
+
     finally:
         db.close()
 

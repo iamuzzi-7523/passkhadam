@@ -1114,6 +1114,7 @@ def generate_my_qr_card(
             detail=detail_msg
         )
 
+    _ensure_worker_ipfs_credential(profile, db)
     png_bytes, envelope_json = verification_engine.generate_qr_presentation(
         profile.did,
         {"full_name": profile.full_name},
@@ -1154,6 +1155,7 @@ def download_my_qr_image(
             detail=detail_msg
         )
 
+    _ensure_worker_ipfs_credential(profile, db)
     png_bytes, _ = verification_engine.generate_qr_presentation(
         profile.did,
         {"full_name": profile.full_name},
@@ -1475,6 +1477,7 @@ def generate_qr_card(
             detail=detail_msg
         )
 
+    _ensure_worker_ipfs_credential(profile, db)
     png_bytes, envelope_json = verification_engine.generate_qr_presentation(
         profile.did,
         {"full_name": profile.full_name},
@@ -1531,6 +1534,7 @@ def download_qr_image(
             detail=detail_msg
         )
 
+    _ensure_worker_ipfs_credential(profile, db)
     png_bytes, _ = verification_engine.generate_qr_presentation(
         profile.did,
         {"full_name": profile.full_name},

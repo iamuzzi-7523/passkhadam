@@ -254,18 +254,70 @@ class IPFSService:
         cid = self._compute_cidv0(data_bytes)
         self.provider.pin(encrypted_b64, cid)
         self._in_memory_cache[cid] = encrypted_b64
+        self._save_to_db(cid, encrypted_b64)
         return cid
+
+    def _save_to_db(self, cid: str, payload: str):
+        try:
+            from app.models.db import SessionLocal, DBIPFSBlob
+            db = SessionLocal()
+            try:
+                existing = db.query(DBIPFSBlob).filter(DBIPFSBlob.cid == cid).first()
+                if not existing:
+                    blob_record = DBIPFSBlob(cid=cid, payload=payload)
+                    db.add(blob_record)
+                    db.commit()
+            except Exception:
+                db.rollback()
+            finally:
+                db.close()
+        except Exception:
+            pass
+
+    def _load_from_db(self, cid: str) -> Optional[str]:
+        try:
+            from app.models.db import SessionLocal, DBIPFSBlob
+            db = SessionLocal()
+            try:
+                record = db.query(DBIPFSBlob).filter(DBIPFSBlob.cid == cid).first()
+                if record and record.payload:
+                    return record.payload
+            finally:
+                db.close()
+        except Exception:
+            pass
+        return None
 
     def resolve_payload(self, cid: str) -> Optional[str]:
         """
         Retrieves the encrypted credential payload corresponding to a CID.
+        Authoritative lookup order:
+        1. In-memory hot cache
+        2. Local disk / Pinata / Kubo provider
+        3. Authoritative PostgreSQL database (DBIPFSBlob) - persists across cloud deployments
         """
+        if not cid:
+            return None
+
         if cid in self._in_memory_cache:
             return self._in_memory_cache[cid]
 
+        # 1. Try local disk / active provider
         res = self.provider.resolve(cid)
         if res is not None:
             self._in_memory_cache[cid] = res
-        return res
+            return res
+
+        # 2. Try authoritative database table (DBIPFSBlob)
+        res = self._load_from_db(cid)
+        if res is not None:
+            self._in_memory_cache[cid] = res
+            try:
+                self.provider.pin(res, cid)
+            except Exception:
+                pass
+            return res
+
+        return None
 
 ipfs_service = IPFSService()

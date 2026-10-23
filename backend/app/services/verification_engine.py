@@ -1019,6 +1019,40 @@ def generate_demo_worker_presentation_response(db: Session) -> Dict[str, Any]:
         else:
             raise HTTPException(status_code=404, detail="No active anchored worker available for simulation")
 
+    # Self-healing: Ensure selected_profile has a valid, resolvable IPFS payload
+    if selected_profile and selected_profile.ipfs_cid and not ipfs_service.resolve_payload(selected_profile.ipfs_cid):
+        from app.core.crypto import build_w3c_verifiable_credential, encrypt_payload, keccak_hash
+        skills_list = [selected_profile.worker_category or "Mason"]
+        if selected_profile.skills_json:
+            try:
+                skills_list = json.loads(selected_profile.skills_json)
+            except Exception:
+                pass
+        vc_subject = {
+            "id": selected_profile.did,
+            "full_name": selected_profile.full_name,
+            "origin_state": selected_profile.origin_state or "Karnataka",
+            "current_state": selected_profile.current_state or "Karnataka",
+            "worker_category": selected_profile.worker_category or "Mason",
+            "employment_level": "Skilled",
+            "nature_of_employment": "Contract",
+            "bocw_registered": True,
+            "bocw_number": f"BOCW-{(selected_profile.origin_state[:2] if selected_profile.origin_state else 'KA').upper()}-2026-9921",
+            "skills": skills_list,
+            "masked_aadhaar": selected_profile.masked_aadhaar or "XXXX XXXX 4821",
+            "verification_authority": "Mock Aadhaar Authority / PASSKHADAM Gateway"
+        }
+        vc = build_w3c_verifiable_credential(vc_subject)
+        enc_blob = encrypt_payload(vc)
+        new_cid = ipfs_service.pin_payload(enc_blob)
+        new_hash = keccak_hash(enc_blob)
+        selected_profile.ipfs_cid = new_cid
+        selected_profile.credential_hash = new_hash
+        db.commit()
+        if selected_profile.did in blockchain_service.worker_registry:
+            blockchain_service.worker_registry[selected_profile.did]["ipfs_cid"] = new_cid
+            blockchain_service.worker_registry[selected_profile.did]["credential_hash"] = new_hash
+
     if selected_profile.did not in blockchain_service.worker_registry:
         blockchain_service.worker_registry[selected_profile.did] = {
             "did": selected_profile.did,
