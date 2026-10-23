@@ -10,11 +10,20 @@ import AuthModal from './AuthModal';
 import Web3WalletModal from './Web3WalletModal';
 import NetworkSettingsModal from './NetworkSettingsModal';
 
-export default function Header({ currentRole, onRoleChange, currentLang, onLangChange }) {
+export default function Header({
+  currentRole,
+  onRoleChange,
+  currentLang,
+  onLangChange,
+  isAuthOpen: externalAuthOpen,
+  setIsAuthOpen: externalSetAuthOpen
+}) {
   const { currentUser, logout } = useAuth();
   const { isConnected, account, networkName, isSimulated } = useWeb3Wallet();
 
-  const [isAuthOpen, setIsAuthOpen] = useState(false);
+  const [internalAuthOpen, setInternalAuthOpen] = useState(false);
+  const isAuthOpen = externalAuthOpen !== undefined ? externalAuthOpen : internalAuthOpen;
+  const setIsAuthOpen = externalSetAuthOpen !== undefined ? externalSetAuthOpen : setInternalAuthOpen;
   const [authInitialTab, setAuthInitialTab] = useState('login');
   const [authInitialToken, setAuthInitialToken] = useState('');
   const [isWalletOpen, setIsWalletOpen] = useState(false);
@@ -49,6 +58,16 @@ export default function Header({ currentRole, onRoleChange, currentLang, onLangC
         setIsAuthOpen(true);
       }
     }
+
+    const handlePkOpenAuth = () => {
+      setAuthInitialTab('login');
+      setIsAuthOpen(true);
+    };
+
+    window.addEventListener('pk_open_auth', handlePkOpenAuth);
+    return () => {
+      window.removeEventListener('pk_open_auth', handlePkOpenAuth);
+    };
   }, []);
 
   const roles = [

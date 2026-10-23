@@ -39,7 +39,22 @@ export function AuthProvider({ children }) {
   const [currentUser, setCurrentUser] = useState(() => {
     const saved = localStorage.getItem('pk_user');
     if (saved) {
-      try { return JSON.parse(saved); } catch (e) { /* ignore */ }
+      try {
+        const parsed = JSON.parse(saved);
+        const role = parsed?.role || parsed?.user?.role;
+        if (role && typeof role === 'string' && role.trim()) {
+          return {
+            ...parsed,
+            role: role.trim().toUpperCase()
+          };
+        } else {
+          console.warn('Discovered corrupt or role-less pk_user in localStorage, discarding.');
+          localStorage.removeItem('pk_user');
+          localStorage.removeItem('pk_token');
+        }
+      } catch (e) {
+        localStorage.removeItem('pk_user');
+      }
     }
     return null;
   });
@@ -86,8 +101,10 @@ export function AuthProvider({ children }) {
       });
       if (res.ok) {
         const userData = await res.json();
-        setCurrentUser(userData);
-        return userData;
+        const role = (userData?.role || userData?.user?.role || '').trim().toUpperCase();
+        const normalized = role ? { ...userData, role } : userData;
+        setCurrentUser(normalized);
+        return normalized;
       }
       if (res.status === 401 || res.status === 403) {
         console.warn(`Auth session rejected (${res.status}), clearing credentials`);
@@ -165,8 +182,10 @@ export function AuthProvider({ children }) {
         }
 
         const authUser = await fetchAuthoritativeContext(idToken);
-        const resolvedUser = authUser || (loginData && loginData.user);
-        if (resolvedUser) {
+        const rawResolved = authUser || (loginData && loginData.user);
+        if (rawResolved) {
+          const role = (rawResolved.role || rawResolved.user?.role || '').trim().toUpperCase();
+          const resolvedUser = role ? { ...rawResolved, role } : rawResolved;
           setCurrentUser(resolvedUser);
           setLoading(false);
           return { success: true, user: resolvedUser };
@@ -193,7 +212,9 @@ export function AuthProvider({ children }) {
       setToken(activeToken);
 
       // 3. Resolve authoritative context
-      const authUser = await fetchAuthoritativeContext(activeToken) || data.user;
+      const rawUser = (await fetchAuthoritativeContext(activeToken)) || data.user;
+      const role = (rawUser?.role || rawUser?.user?.role || data.role || '').trim().toUpperCase();
+      const authUser = role ? { ...rawUser, role } : rawUser;
       setCurrentUser(authUser);
       setLoading(false);
       return { success: true, user: authUser };
@@ -215,7 +236,9 @@ export function AuthProvider({ children }) {
       if (res.ok) {
         const data = await res.json();
         setToken(data.access_token);
-        const authUser = await fetchAuthoritativeContext(data.access_token, true) || data.user;
+        const rawUser = (await fetchAuthoritativeContext(data.access_token, true)) || data.user;
+        const normalizedRole = (rawUser?.role || rawUser?.user?.role || role).trim().toUpperCase();
+        const authUser = { ...rawUser, role: normalizedRole };
         setCurrentUser(authUser);
         setLoading(false);
         return { success: true, user: authUser };
@@ -298,10 +321,12 @@ export function AuthProvider({ children }) {
       const activeToken = idToken || data.access_token;
       setToken(activeToken);
 
-      const authUser = await fetchAuthoritativeContext(activeToken) || data.user;
+      const rawUser = (await fetchAuthoritativeContext(activeToken)) || data.user;
+      const role = (rawUser?.role || rawUser?.user?.role || userData.role || 'WORKER').trim().toUpperCase();
+      const authUser = role ? { ...rawUser, role } : { ...rawUser, role: 'WORKER' };
       setCurrentUser(authUser);
       setLoading(false);
-      return { success: true, user: data.user };
+      return { success: true, user: authUser };
     } catch (err) {
       setLoading(false);
       setError(err.message);
@@ -408,20 +433,32 @@ export function AuthProvider({ children }) {
       });
       const data = await res.json();
       if (res.ok && data.verified) {
-        setCurrentUser(prev => prev ? { ...prev, is_email_verified: true, email: cleanEmail } : prev);
+        setCurrentUser(prev => {
+          if (!prev) return null;
+          const role = (prev.role || prev.user?.role || '').trim().toUpperCase();
+          return { ...prev, is_email_verified: true, email: cleanEmail, ...(role ? { role } : {}) };
+        });
         return { success: true, message: data.message || 'Email verified successfully!' };
       }
 
       // Check test presets fallback
       if (code === '123456' || code === '729415') {
-        setCurrentUser(prev => prev ? { ...prev, is_email_verified: true, email: cleanEmail } : prev);
+        setCurrentUser(prev => {
+          if (!prev) return null;
+          const role = (prev.role || prev.user?.role || '').trim().toUpperCase();
+          return { ...prev, is_email_verified: true, email: cleanEmail, ...(role ? { role } : {}) };
+        });
         return { success: true, message: 'Email verified successfully via test OTP preset' };
       }
 
       return { success: false, error: extractErrorMessage(data.detail, 'Invalid email verification code') };
     } catch (err) {
       if (code === '123456' || code === '729415') {
-        setCurrentUser(prev => prev ? { ...prev, is_email_verified: true, email: cleanEmail } : prev);
+        setCurrentUser(prev => {
+          if (!prev) return null;
+          const role = (prev.role || prev.user?.role || '').trim().toUpperCase();
+          return { ...prev, is_email_verified: true, email: cleanEmail, ...(role ? { role } : {}) };
+        });
         return { success: true, message: 'Email verified successfully via test code' };
       }
       return { success: false, error: 'Verification failed' };
@@ -520,12 +557,21 @@ export function AuthProvider({ children }) {
           setToken(freshToken);
           const authUser = await fetchAuthoritativeContext(freshToken);
           if (authUser) {
-            setCurrentUser(authUser);
+            const role = (authUser.role || authUser.user?.role || '').trim().toUpperCase();
+            setCurrentUser(role ? { ...authUser, role } : authUser);
           } else {
-            setCurrentUser(prev => prev ? { ...prev, is_email_verified: true, email: targetUser.email } : prev);
+            setCurrentUser(prev => {
+              if (!prev) return null;
+              const role = (prev.role || prev.user?.role || '').trim().toUpperCase();
+              return { ...prev, is_email_verified: true, email: targetUser.email, ...(role ? { role } : {}) };
+            });
           }
         } else {
-          setCurrentUser(prev => prev ? { ...prev, is_email_verified: true, email: targetUser.email } : prev);
+          setCurrentUser(prev => {
+            if (!prev) return null;
+            const role = (prev.role || prev.user?.role || '').trim().toUpperCase();
+            return { ...prev, is_email_verified: true, email: targetUser.email, ...(role ? { role } : {}) };
+          });
         }
 
         return {

@@ -40,6 +40,15 @@ export default function RoleGuard({ requiredRole, children, onOpenAuth }) {
   const [feedbackMsg, setFeedbackMsg] = useState(null);
   const [feedbackType, setFeedbackType] = useState('info');
 
+  const handleOpenAuth = async () => {
+    await logout();
+    if (onOpenAuth) {
+      onOpenAuth();
+    } else if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('pk_open_auth'));
+    }
+  };
+
   useEffect(() => {
     if (currentUser?.phone) {
       setPhoneInput(currentUser.phone);
@@ -153,7 +162,7 @@ export default function RoleGuard({ requiredRole, children, onOpenAuth }) {
             </p>
           </div>
           <button
-            onClick={onOpenAuth}
+            onClick={handleOpenAuth}
             className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-medium text-sm transition"
           >
             Open Sign-In Dialog
@@ -403,8 +412,35 @@ export default function RoleGuard({ requiredRole, children, onOpenAuth }) {
   }
 
   // Check Role Match
-  const userRole = (currentUser.role || '').toUpperCase();
-  const reqRole = requiredRole.toUpperCase();
+  const rawRole = currentUser.role || currentUser.user?.role || '';
+  const userRole = String(rawRole).trim().toUpperCase();
+  const reqRole = String(requiredRole || '').trim().toUpperCase();
+
+  // If user is authenticated but has no valid role assigned
+  if (!userRole) {
+    return (
+      <div className="min-h-[500px] flex items-center justify-center p-6">
+        <div className="max-w-md w-full bg-slate-900 border border-amber-900/40 rounded-2xl p-6 text-center space-y-4">
+          <div className="w-12 h-12 rounded-full bg-amber-600/20 text-amber-400 border border-amber-500/30 flex items-center justify-center mx-auto">
+            <AlertTriangle className="w-6 h-6" />
+          </div>
+          <div>
+            <h3 className="text-lg font-bold text-white">Session Incomplete</h3>
+            <p className="text-sm text-slate-400 mt-1">
+              Your profile does not have an active system role or your session has expired. Please sign in again.
+            </p>
+          </div>
+          <button
+            onClick={handleOpenAuth}
+            className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-sm font-medium transition flex items-center justify-center gap-1.5"
+          >
+            <LogIn className="w-4 h-4" />
+            Sign In / Switch Account
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (userRole !== reqRole && userRole !== 'ADMIN') {
     return (
@@ -416,13 +452,14 @@ export default function RoleGuard({ requiredRole, children, onOpenAuth }) {
           <div>
             <h3 className="text-lg font-bold text-white">Role Mismatch</h3>
             <p className="text-sm text-slate-400 mt-1">
-              You are signed in as <strong className="text-slate-200">{currentUser.role}</strong>. This portal requires the <strong className="text-blue-400">{requiredRole}</strong> role.
+              You are signed in as <strong className="text-slate-200">{userRole}</strong>. This portal requires the <strong className="text-blue-400">{reqRole}</strong> role.
             </p>
           </div>
           <button
-            onClick={onOpenAuth}
-            className="w-full py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-medium transition"
+            onClick={handleOpenAuth}
+            className="w-full py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-medium transition flex items-center justify-center gap-1.5"
           >
+            <LogOut className="w-3.5 h-3.5" />
             Switch Account / Sign In
           </button>
         </div>

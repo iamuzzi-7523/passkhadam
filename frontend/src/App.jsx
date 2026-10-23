@@ -14,13 +14,17 @@ function MainApp() {
   const { currentUser, configError } = useAuth();
   const [currentRole, setCurrentRole] = useState('WORKER');
   const [currentLang, setCurrentLang] = useState('en');
+  const [isAuthOpen, setIsAuthOpen] = useState(false);
+
+  const activeRole = (currentUser?.role || currentUser?.user?.role || '').trim().toUpperCase();
+  const isAuthenticated = Boolean(currentUser && activeRole);
 
   // Automatically route authenticated user to their provisioned role workspace
   useEffect(() => {
-    if (currentUser?.role) {
-      setCurrentRole(currentUser.role);
+    if (activeRole) {
+      setCurrentRole(activeRole);
     }
-  }, [currentUser?.role]);
+  }, [activeRole]);
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-950 text-slate-100 selection:bg-blue-600 selection:text-white">
@@ -46,6 +50,8 @@ function MainApp() {
         onRoleChange={setCurrentRole}
         currentLang={currentLang}
         onLangChange={setCurrentLang}
+        isAuthOpen={isAuthOpen}
+        setIsAuthOpen={setIsAuthOpen}
       />
 
       {/* Main Content Area: Default Unauthenticated Authentication Page or Authenticated Workspace */}
