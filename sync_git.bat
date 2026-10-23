@@ -21,11 +21,11 @@ git config user.name "Mohammed Uzair"
 git config user.email "iamuzzi-7523@users.noreply.github.com"
 
 :: 3. Custom commit message or default timestamped message
-set COMMIT_MSG=%*
+set "COMMIT_MSG=%~1"
 if "%COMMIT_MSG%"=="" (
     for /f "tokens=2-4 delims=/ " %%a in ('date /t') do (set mydate=%%c-%%a-%%b)
     for /f "tokens=1-2 delims=/:" %%a in ('time /t') do (set mytime=%%a:%%b)
-    set COMMIT_MSG=Update PassKhadam system development - !mydate! !mytime!
+    set "COMMIT_MSG=Update PassKhadam system development - !mydate! !mytime!"
 )
 
 echo [1/4] Checking repository status...
