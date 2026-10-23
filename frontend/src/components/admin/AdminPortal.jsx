@@ -4,7 +4,7 @@ import {
   RefreshCw, Layers, Database, Key, Check, PlusCircle, AlertCircle, 
   Copy, Search, Filter, ShieldCheck, Activity, Wifi, ChevronDown, 
   UserPlus, Send, Ban, CheckSquare, Square, Info, Shield, Clock, ExternalLink,
-  Calendar, RotateCcw, X
+  Calendar, RotateCcw, X, AlertTriangle
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { apiFetch } from '../../utils/api';
@@ -311,6 +311,10 @@ export default function AdminPortal({ currentLang = 'en' }) {
   const [discontinueReason, setDiscontinueReason] = useState('');
   const [suspendModalOpen, setSuspendModalOpen] = useState(false);
   const [suspendReason, setSuspendReason] = useState('');
+  const [officerSuspendModalOpen, setOfficerSuspendModalOpen] = useState(false);
+  const [selectedOfficerForSuspend, setSelectedOfficerForSuspend] = useState(null);
+  const [officerSuspendReason, setOfficerSuspendReason] = useState('');
+  const [officerSuspendSubmitting, setOfficerSuspendSubmitting] = useState(false);
 
   // Tab 3: Government Officers
   const [officers, setOfficers] = useState([]);
@@ -712,13 +716,25 @@ export default function AdminPortal({ currentLang = 'en' }) {
     try {
       setLoading(true);
       setErrorMsg('');
-      const res = await apiFetch(`/api/v1/admin/category-requests/${selectedCatReq.id}`, {
-        method: 'PATCH',
-        body: {
-          action: 'SUSPEND',
-          reason: suspendReason
-        }
-      });
+      let res;
+      try {
+        res = await apiFetch(`/api/v1/admin/category-requests/${selectedCatReq.id}`, {
+          method: 'PATCH',
+          body: {
+            action: 'SUSPEND',
+            reason: suspendReason
+          }
+        });
+      } catch (patchErr) {
+        // Fallback to POST for network/runtime environments restricting HTTP PATCH
+        res = await apiFetch(`/api/v1/admin/category-requests/${selectedCatReq.id}`, {
+          method: 'POST',
+          body: {
+            action: 'SUSPEND',
+            reason: suspendReason
+          }
+        });
+      }
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || 'Failed to suspend category');
 
@@ -821,24 +837,88 @@ export default function AdminPortal({ currentLang = 'en' }) {
     }
   };
 
-  const handleUpdateOfficerStatus = async (officerId, newStatus) => {
-    const reason = prompt(`Enter reason for updating officer status to ${newStatus}:`);
-    if (['SUSPENDED', 'DISABLED'].includes(newStatus) && (!reason || !reason.trim())) {
-      alert('Reason is mandatory for suspension or disabling an officer');
+  const handleOpenOfficerSuspend = (off) => {
+    setSelectedOfficerForSuspend(off);
+    setOfficerSuspendReason('');
+    setOfficerSuspendModalOpen(true);
+  };
+
+  const submitOfficerSuspend = async (e) => {
+    e.preventDefault();
+    if (!selectedOfficerForSuspend) return;
+    if (!officerSuspendReason.trim()) {
+      alert('Suspension reason is strictly mandatory');
       return;
     }
 
+    try {
+      setOfficerSuspendSubmitting(true);
+      setErrorMsg('');
+      const res = await apiFetch(`/api/v1/admin/government-officers/${selectedOfficerForSuspend.id}/status`, {
+        method: 'POST',
+        body: {
+          status: 'SUSPENDED',
+          reason: officerSuspendReason.trim()
+        }
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Failed to suspend officer');
+
+      setActionMsg(`Officer '${data.officer_name || data.full_name || selectedOfficerForSuspend.id}' has been suspended.`);
+      setOfficerSuspendModalOpen(false);
+      setSelectedOfficerForSuspend(null);
+      setOfficerSuspendReason('');
+      await fetchOfficers();
+    } catch (err) {
+      setErrorMsg(err.message || 'Failed to suspend officer');
+    } finally {
+      setOfficerSuspendSubmitting(false);
+    }
+  };
+
+  const handleReactivateOfficer = async (officerId) => {
     try {
       setLoading(true);
       setErrorMsg('');
       const res = await apiFetch(`/api/v1/admin/government-officers/${officerId}/status`, {
         method: 'POST',
-        body: { status: newStatus, reason: reason || 'Admin updated status' }
+        body: { status: 'ACTIVE', reason: 'Reactivated by admin' }
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Failed to reactivate officer');
+
+      setActionMsg(`Officer '${data.officer_name || data.full_name || officerId}' reactivated to ACTIVE.`);
+      await fetchOfficers();
+    } catch (err) {
+      setErrorMsg(err.message || 'Failed to reactivate officer');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleUpdateOfficerStatus = async (officerId, newStatus) => {
+    if (newStatus === 'SUSPENDED') {
+      const off = officers.find(o => o.id === officerId);
+      if (off) {
+        handleOpenOfficerSuspend(off);
+        return;
+      }
+    }
+    if (newStatus === 'ACTIVE') {
+      await handleReactivateOfficer(officerId);
+      return;
+    }
+    try {
+      setLoading(true);
+      setErrorMsg('');
+      const res = await apiFetch(`/api/v1/admin/government-officers/${officerId}/status`, {
+        method: 'POST',
+        body: { status: newStatus, reason: `Admin updated status to ${newStatus}` }
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || 'Failed to update officer status');
 
-      setActionMsg(`Officer '${data.officer_name}' status updated to ${data.status}`);
+      setActionMsg(`Officer '${data.officer_name || data.full_name || officerId}' status updated to ${data.status}`);
       await fetchOfficers();
     } catch (err) {
       setErrorMsg(err.message);
@@ -2431,19 +2511,19 @@ export default function AdminPortal({ currentLang = 'en' }) {
                         </td>
                         <td className="py-3 px-3 text-right">
                           <div className="flex items-center justify-end gap-1.5">
-                            {off.status === 'ACTIVE' ? (
+                            {off.status === 'SUSPENDED' ? (
                               <button
-                                onClick={() => handleUpdateOfficerStatus(off.id, 'SUSPENDED')}
-                                className="px-2 py-1 bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 border border-rose-500/30 rounded-lg text-[10px] font-semibold"
-                              >
-                                Suspend
-                              </button>
-                            ) : (
-                              <button
-                                onClick={() => handleUpdateOfficerStatus(off.id, 'ACTIVE')}
+                                onClick={() => handleReactivateOfficer(off.id)}
                                 className="px-2 py-1 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 rounded-lg text-[10px] font-semibold"
                               >
                                 Reactivate
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => handleOpenOfficerSuspend(off)}
+                                className="px-2 py-1 bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 border border-rose-500/30 rounded-lg text-[10px] font-semibold"
+                              >
+                                Suspend
                               </button>
                             )}
                             <button
@@ -2866,6 +2946,78 @@ export default function AdminPortal({ currentLang = 'en' }) {
                   className="px-5 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-xl font-bold transition shadow-md shadow-amber-600/20"
                 >
                   Suspend Category
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Suspend Government Officer Modal */}
+      {officerSuspendModalOpen && selectedOfficerForSuspend && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-rose-900/60 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 text-xs">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="w-5 h-5 text-rose-400" />
+                <h3 className="font-bold text-rose-400 text-base">Suspend Government Officer</h3>
+              </div>
+              <button 
+                onClick={() => {
+                  setOfficerSuspendModalOpen(false);
+                  setSelectedOfficerForSuspend(null);
+                }} 
+                className="text-slate-400 hover:text-white"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={submitOfficerSuspend} className="space-y-3">
+              <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-800 space-y-1">
+                <div className="text-white font-semibold">
+                  {selectedOfficerForSuspend.officer_name || selectedOfficerForSuspend.full_name || `Officer #${selectedOfficerForSuspend.id}`}
+                </div>
+                <div className="text-slate-400 text-[11px]">
+                  {selectedOfficerForSuspend.department} • {selectedOfficerForSuspend.authority_level} ({selectedOfficerForSuspend.state || 'All-India'})
+                </div>
+                {selectedOfficerForSuspend.official_email && (
+                  <div className="text-slate-500 text-[10px] font-mono">
+                    {selectedOfficerForSuspend.official_email}
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-rose-300 font-semibold mb-1">Mandatory Suspension Reason *</label>
+                <textarea
+                  value={officerSuspendReason}
+                  onChange={(e) => setOfficerSuspendReason(e.target.value)}
+                  rows={3}
+                  placeholder="e.g. Administrative suspension pending internal audit or unauthorized actions"
+                  className="w-full px-3 py-2 bg-slate-950 border border-rose-500/40 rounded-xl text-white outline-none focus:border-rose-500"
+                  required
+                />
+              </div>
+
+              <div className="pt-2 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOfficerSuspendModalOpen(false);
+                    setSelectedOfficerForSuspend(null);
+                  }}
+                  className="px-4 py-2 bg-slate-800 text-slate-300 rounded-xl font-medium"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={officerSuspendSubmitting}
+                  className="px-5 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-xl font-bold transition shadow-md shadow-rose-600/20 flex items-center gap-1.5"
+                >
+                  {officerSuspendSubmitting ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : null}
+                  <span>Confirm Suspension</span>
                 </button>
               </div>
             </form>

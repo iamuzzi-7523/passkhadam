@@ -932,6 +932,9 @@ def list_pending_category_requests(
 
 @router.post("/category-requests/{req_id}/review", response_model=CategoryAuthorizationRequestResponse)
 @router.patch("/category-requests/{req_id}", response_model=CategoryAuthorizationRequestResponse)
+@router.post("/category-requests/{req_id}", response_model=CategoryAuthorizationRequestResponse)
+@router.post("/category-requests/{req_id}/suspend", response_model=CategoryAuthorizationRequestResponse)
+@router.post("/suspend-category/{req_id}", response_model=CategoryAuthorizationRequestResponse)
 @router.post("/decide-category/{req_id}", response_model=CategoryAuthorizationRequestResponse)
 def review_category_request(
     req_id: int,
@@ -1567,6 +1570,8 @@ def update_government_officer(
 
 
 @router.post("/government-officers/{officer_id}/status", response_model=GovernmentOfficerResponse)
+@router.put("/government-officers/{officer_id}/status", response_model=GovernmentOfficerResponse)
+@router.patch("/government-officers/{officer_id}/status", response_model=GovernmentOfficerResponse)
 def update_officer_status(
     officer_id: int,
     req: GovernmentOfficerStatusUpdate,
@@ -1597,6 +1602,9 @@ def update_officer_status(
         user = db.query(DBUser).filter(DBUser.id == off.user_id).first()
         if user:
             user.status = new_st
+
+    if off.wallet_address and off.wallet_address in blockchain_service.organizations:
+        blockchain_service.organizations[off.wallet_address]["status"] = "SUSPENDED" if new_st == "SUSPENDED" else "APPROVED"
 
     log_governance_audit(
         db=db,

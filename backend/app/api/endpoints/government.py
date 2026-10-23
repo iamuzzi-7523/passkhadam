@@ -668,7 +668,7 @@ def resolve_employment_dispute(
 @router.post("/credentials/issue", response_model=CredentialResponse)
 def issue_government_credential(
     req: CredentialIssueRequest,
-    current_user: DBUser = Depends(get_current_government_officer),
+    current_user: DBUser = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
@@ -676,9 +676,38 @@ def issue_government_credential(
     (e.g., BOCW Social Security, Trade Skill Certification, Health/Safety Clearance, Inter-State Migrant Permit)
     directly to a worker's DID wallet.
     """
-    officer = db.query(DBGovernmentOfficer).filter(DBGovernmentOfficer.user_id == current_user.id).first()
-    issuer_name = req.issuer_name or (officer.department if officer else None) or current_user.full_name or "Government Authority"
-    issuer_addr = (officer.wallet_address if officer else None) or current_user.organization_address or "0xgov_official"
+    if getattr(current_user, "role", None) not in ["GOVERNMENT", "ADMIN"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Unauthorized: Only government officers can issue official credentials"
+        )
+
+    officer = None
+    if isinstance(current_user, DBGovernmentOfficer):
+        officer = current_user
+    else:
+        user_id = getattr(current_user, "id", None)
+        if user_id:
+            officer = db.query(DBGovernmentOfficer).filter(DBGovernmentOfficer.user_id == user_id).first()
+        user_email = getattr(current_user, "email", None)
+        if not officer and user_email:
+            officer = db.query(DBGovernmentOfficer).filter(
+                func.lower(DBGovernmentOfficer.official_email) == user_email.strip().lower()
+            ).first()
+
+    issuer_name = (
+        req.issuer_name or
+        (officer.department if officer and officer.department else None) or
+        (officer.officer_name if officer and officer.officer_name else None) or
+        getattr(current_user, "organization_name", None) or
+        getattr(current_user, "full_name", None) or
+        "Government Authority"
+    )
+    issuer_addr = (
+        (officer.wallet_address if officer and officer.wallet_address else None) or
+        getattr(current_user, "organization_address", None) or
+        "0x90F79bf6EB2c4f870365E785982E1f101E93b906"
+    )
 
     # Verify worker exists and is valid
     worker = db.query(DBWorkerProfile).filter(DBWorkerProfile.did == req.worker_did).first()

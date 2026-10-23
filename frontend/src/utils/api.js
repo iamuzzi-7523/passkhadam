@@ -122,7 +122,12 @@ export async function apiFetch(endpoint, options = {}) {
 
   let targetUrl = endpoint;
   if (cfg.isDesktop && cfg.apiUrl && typeof endpoint === 'string' && endpoint.startsWith('/')) {
-    targetUrl = `${cfg.apiUrl}${endpoint}`;
+    targetUrl = `${cfg.apiUrl.replace(/\/+$/, '')}${endpoint}`;
+  } else if (!cfg.isDesktop && typeof endpoint === 'string' && endpoint.startsWith('/')) {
+    const envApi = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL) ? import.meta.env.VITE_API_URL.replace(/\/+$/, '') : '';
+    if (envApi) {
+      targetUrl = `${envApi}${endpoint}`;
+    }
   }
 
   return fetch(targetUrl, {

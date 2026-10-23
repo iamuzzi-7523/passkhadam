@@ -49,7 +49,7 @@ def _parse_port(val: Optional[str], default: int = 587) -> int:
 
 class Settings(BaseSettings):
     PROJECT_NAME: str = "PASSKHADAM"
-    VERSION: str = "0.2.0"
+    VERSION: str = "0.5.0"
     API_V1_STR: str = "/api/v1"
     SECRET_KEY: str = os.getenv("SECRET_KEY", "passkhadam-super-secure-production-key-2026")
     ALGORITHM: str = "HS256"

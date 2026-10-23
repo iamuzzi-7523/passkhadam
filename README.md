@@ -2,6 +2,7 @@
 
 [![UN SDG 8](https://img.shields.io/badge/SDG%208-Decent%20Work%20%26%20Economic%20Growth-darkorange?style=flat-square)](https://sdgs.un.org/goals/goal8)
 [![UN SDG 10](https://img.shields.io/badge/SDG%2010-Reduced%20Inequalities-crimson?style=flat-square)](https://sdgs.un.org/goals/goal10)
+[![Release](https://img.shields.io/badge/Release-v0.5.0-blue?logo=github&style=flat-square)](https://github.com/iamuzzi-7523/passkhadam/releases)
 [![Solidity](https://img.shields.io/badge/Solidity-0.8.24-lightgrey?logo=solidity&style=flat-square)](https://soliditylang.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-1.0.0-009688?logo=fastapi&style=flat-square)](https://fastapi.tiangolo.com/)
 [![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&style=flat-square)](https://react.dev/)
@@ -172,6 +173,18 @@ npm run dev
 
 ---
 
-## 📜 9. License
+## 📦 9. Releases & Desktop Distribution
+
+PassKadam provides both cloud-deployed web portals and zero-dependency portable desktop executables built with Electron:
+
+| Release Version | Status | Primary Focus & Highlights | Download / Notes |
+| :--- | :---: | :--- | :--- |
+| **v0.5.0** | **Latest** | **Credential Issuance & Governance Reliability Patch**: Fixes employer trade credential issue loading loop, resolves government credential issuance "Failed to fetch" (eliminates route typing AttributeError and preserves CORS headers), enables active category scope suspension via CORS PATCH/POST, and upgrades government officer suspension to an Electron-compatible modal dialog. | [v0.5.0 Notes](releases/v0.5.0.md) |
+| **v0.4.0** | **Preserved** | **Cloud Staging & Verifiable Credential Architecture**: Deployed live FastAPI backend on Render (`https://passkhadam-api.onrender.com`), persistent Supabase PostgreSQL database, Sepolia testnet contracts, multi-trade worker onboarding, and standalone desktop executable. | [v0.4.0 Release](https://github.com/iamuzzi-7523/passkhadam/releases/tag/v0.4.0) • [v0.4.0 Notes](releases/v0.4.0.md) |
+| **v0.3.0** | Archived | **Portable Desktop Distribution**: Standalone Windows x64 portable executable with custom protocol handler (`app://passkhadam.app`). | [v0.3.0 Release](https://github.com/iamuzzi-7523/passkhadam/releases/tag/v0.3.0) |
+
+---
+
+## 📜 10. License
 
 This project is licensed under the MIT License.

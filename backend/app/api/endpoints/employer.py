@@ -778,7 +778,7 @@ def issue_employer_credential(
     Allows approved Employers to issue Trade Experience, Competency, and Site Induction credentials
     to a worker's DID wallet.
     """
-    if current_user.role != "EMPLOYER":
+    if current_user.role not in ["EMPLOYER", "ADMIN"]:
         raise HTTPException(status_code=403, detail="Unauthorized: Only employers can issue trade/experience credentials")
 
     org = db.query(DBEmployerOrganization).filter(DBEmployerOrganization.user_id == current_user.id).first()

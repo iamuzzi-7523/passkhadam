@@ -24,6 +24,7 @@ export default function EmployerPortal({ currentLang = 'en' }) {
   const [credType, setCredType] = useState("Experience");
   const [credSkills, setCredSkills] = useState("");
   const [issuingCred, setIssuingCred] = useState(false);
+  const [credError, setCredError] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("");
   const [selectedLevel, setSelectedLevel] = useState("Skilled");
   const [selectedNature, setSelectedNature] = useState("Contract");
@@ -172,7 +173,7 @@ export default function EmployerPortal({ currentLang = 'en' }) {
     if (!verifiedResult) return;
     setIssuingCred(true);
     setActionMsg("");
-    setErrorMsg("");
+    setCredError("");
     try {
       const res = await apiFetch("/api/v1/employer/credentials/issue", {
         method: "POST",
@@ -188,8 +189,9 @@ export default function EmployerPortal({ currentLang = 'en' }) {
       if (!res.ok) throw new Error(data.detail || "Failed to issue credential");
       setActionMsg(`Verifiable Credential "${data.title}" successfully issued and anchored to worker wallet!`);
       setShowCredModal(false);
+      setCredSkills("");
     } catch (e) {
-      setErrorMsg(e.message || "Failed to issue credential");
+      setCredError(e.message || "Failed to issue credential");
     } finally {
       setIssuingCred(false);
     }
@@ -1035,6 +1037,13 @@ export default function EmployerPortal({ currentLang = 'en' }) {
                   className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-white outline-none"
                 />
               </div>
+
+              {credError && (
+                <div className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>{credError}</span>
+                </div>
+              )}
 
               <div className="pt-2 flex justify-end gap-2">
                 <button
