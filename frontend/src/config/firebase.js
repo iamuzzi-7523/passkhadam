@@ -1,4 +1,4 @@
-import { initializeApp } from 'firebase/app';
+import { initializeApp, getApps } from 'firebase/app';
 import {
   getAuth,
   signInWithEmailAndPassword,
@@ -22,9 +22,19 @@ const firebaseConfig = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:854979434504:web:f7378b2c22039d3b1159bd"
 };
 
-// Initialize Firebase App Singleton
+// Initialize Primary Firebase App Singleton
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
+
+/**
+ * Secondary Auth instance for isolated registration email dispatch.
+ * Does not switch or disturb the primary auth session or trigger global onAuthStateChanged listeners.
+ */
+export function getSecondaryAuth() {
+  const existing = getApps().find(a => a.name === 'SecondaryRegistrationApp');
+  const secApp = existing || initializeApp(firebaseConfig, 'SecondaryRegistrationApp');
+  return getAuth(secApp);
+}
 
 /**
  * Returns current user's Firebase ID token

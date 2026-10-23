@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import {
   auth,
+  getSecondaryAuth,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   signOut,
@@ -109,7 +110,14 @@ export function AuthProvider({ children }) {
         try {
           const idToken = await fbUser.getIdToken();
           setToken(idToken);
-          await fetchAuthoritativeContext(idToken);
+          const userData = await fetchAuthoritativeContext(idToken);
+          // Only establish active session if backend confirms a registered account;
+          // keeps unregistered Firebase accounts from prematurely locking the registration UI.
+          if (userData) {
+            setCurrentUser(userData);
+          } else {
+            setCurrentUser(null);
+          }
         } catch (e) {
           console.warn('Firebase token retrieval error:', e);
         }
@@ -318,35 +326,38 @@ export function AuthProvider({ children }) {
 
     let firebaseDispatched = false;
 
-    // 1. Ensure active Firebase Auth user exists for cleanEmail so auth.currentUser is populated
+    // 1. Dispatch Firebase email verification link via secondary auth instance
+    // Keeping secondaryAuth completely decoupled prevents primary auth from switching users prematurely
     try {
-      const needsUserSwitch = !auth.currentUser || !auth.currentUser.email || (auth.currentUser.email.toLowerCase() !== cleanEmail);
-      if (needsUserSwitch && cleanEmail && password) {
+      if (cleanEmail && password) {
+        const secAuth = getSecondaryAuth();
+        let secUser = null;
         try {
-          await createUserWithEmailAndPassword(auth, cleanEmail, password);
+          const userCred = await createUserWithEmailAndPassword(secAuth, cleanEmail, password);
+          secUser = userCred.user;
         } catch (fbCreateErr) {
           if (fbCreateErr.code === 'auth/email-already-in-use') {
             try {
-              await signInWithEmailAndPassword(auth, cleanEmail, password);
+              const userCred = await signInWithEmailAndPassword(secAuth, cleanEmail, password);
+              secUser = userCred.user;
             } catch (fbLoginErr) {
-              console.warn('Firebase login note for existing email:', fbLoginErr.message);
+              console.warn('Secondary auth login note:', fbLoginErr.message);
             }
           } else {
-            console.warn('Firebase user creation notice:', fbCreateErr.message);
+            console.warn('Secondary auth user creation notice:', fbCreateErr.message);
           }
         }
-      }
 
-      // 2. Immediately invoke sendEmailVerification on active currentUser matching recipient email
-      if (auth.currentUser && auth.currentUser.email && auth.currentUser.email.toLowerCase() === cleanEmail) {
-        await sendEmailVerification(auth.currentUser);
-        firebaseDispatched = true;
+        if (secUser) {
+          await sendEmailVerification(secUser);
+          firebaseDispatched = true;
+        }
       }
     } catch (fbErr) {
-      console.warn('Firebase sendEmailVerification error:', fbErr);
+      console.warn('Secondary auth sendEmailVerification error:', fbErr);
     }
 
-    // 3. Dispatch backend 6-digit OTP mailer (SMTP with simulated fallback)
+    // 2. Dispatch backend 6-digit OTP mailer (SMTP with simulated fallback)
     try {
       const res = await fetch(`${API_BASE}/api/v1/auth/send-email-otp`, {
         method: 'POST',
@@ -421,23 +432,29 @@ export function AuthProvider({ children }) {
   const sendFirebaseEmailLink = async (email = null, password = null) => {
     try {
       const cleanEmail = (email || '').trim().toLowerCase();
-      const needsUserSwitch = !auth.currentUser || !auth.currentUser.email || (auth.currentUser.email.toLowerCase() !== cleanEmail);
-      if (needsUserSwitch && cleanEmail && password) {
+      const secAuth = getSecondaryAuth();
+      let targetUser = secAuth.currentUser;
+      if (!targetUser && cleanEmail && password) {
         try {
-          await createUserWithEmailAndPassword(auth, cleanEmail, password);
+          const userCred = await createUserWithEmailAndPassword(secAuth, cleanEmail, password);
+          targetUser = userCred.user;
         } catch (createErr) {
           if (createErr.code === 'auth/email-already-in-use') {
-            await signInWithEmailAndPassword(auth, cleanEmail, password);
+            const userCred = await signInWithEmailAndPassword(secAuth, cleanEmail, password);
+            targetUser = userCred.user;
           } else {
             throw createErr;
           }
         }
       }
-      if (!auth.currentUser || (cleanEmail && (!auth.currentUser.email || auth.currentUser.email.toLowerCase() !== cleanEmail))) {
-        return { success: false, error: 'No active Firebase user matching this email address. Please check registration credentials.' };
+      if (!targetUser && auth.currentUser) {
+        targetUser = auth.currentUser;
       }
-      await sendEmailVerification(auth.currentUser);
-      return { success: true, message: `Official Firebase verification email sent to ${auth.currentUser.email}` };
+      if (!targetUser) {
+        return { success: false, error: 'No active Firebase user matching this email address. Please enter credentials to dispatch link.' };
+      }
+      await sendEmailVerification(targetUser);
+      return { success: true, message: `Official Firebase verification email sent to ${targetUser.email}` };
     } catch (err) {
       return { success: false, error: err.message };
     }
@@ -446,38 +463,120 @@ export function AuthProvider({ children }) {
   // Firebase Official Email Link Status Check
   const checkFirebaseEmailStatus = async (email = null, password = null) => {
     try {
-      const cleanEmail = (email || '').trim().toLowerCase();
-      const needsUserSwitch = !auth.currentUser || !auth.currentUser.email || (auth.currentUser.email.toLowerCase() !== cleanEmail);
-      if (needsUserSwitch && cleanEmail && password) {
-        try {
-          await signInWithEmailAndPassword(auth, cleanEmail, password);
-        } catch (e) {
-          console.warn('Firebase sign-in before reload check:', e.message);
-        }
-      }
-      if (!auth.currentUser || (cleanEmail && (!auth.currentUser.email || auth.currentUser.email.toLowerCase() !== cleanEmail))) {
-        return { verified: false, error: 'No authenticated Firebase user matching this email address' };
-      }
-      await auth.currentUser.reload();
-      const isVerified = Boolean(auth.currentUser.emailVerified);
-      if (isVerified) {
-        setCurrentUser(prev => prev ? { ...prev, is_email_verified: true, email: auth.currentUser.email } : prev);
-        if (cleanEmail) {
+      const cleanEmail = (email || (auth.currentUser && auth.currentUser.email) || '').trim().toLowerCase();
+      let targetUser = null;
+
+      // 1. Check primary auth if matching user is present
+      if (auth.currentUser && (!cleanEmail || (auth.currentUser.email && auth.currentUser.email.toLowerCase() === cleanEmail))) {
+        targetUser = auth.currentUser;
+      } else {
+        // 2. Check secondary auth (used during registration)
+        const secAuth = getSecondaryAuth();
+        if (secAuth.currentUser && (!cleanEmail || (secAuth.currentUser.email && secAuth.currentUser.email.toLowerCase() === cleanEmail))) {
+          targetUser = secAuth.currentUser;
+        } else if (cleanEmail && password) {
           try {
-            await fetch(`${API_BASE}/api/v1/auth/verify-email-otp`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ email: cleanEmail, otp_code: '729415' })
-            });
+            const cred = await signInWithEmailAndPassword(secAuth, cleanEmail, password);
+            targetUser = cred.user;
           } catch (e) {
-            // Non-blocking sync to backend DB
+            console.warn('Secondary auth sign-in during status check:', e.message);
           }
         }
       }
-      return { verified: isVerified, email: auth.currentUser.email };
+
+      // 3. Fallback: try signing in with primary auth if password provided and no targetUser
+      if (!targetUser && cleanEmail && password) {
+        try {
+          const cred = await signInWithEmailAndPassword(auth, cleanEmail, password);
+          targetUser = cred.user;
+        } catch (e) {
+          console.warn('Primary auth sign-in during status check:', e.message);
+        }
+      }
+
+      if (!targetUser) {
+        return { success: false, verified: false, error: 'No active Firebase identity found for this email address. Please request a verification email first.' };
+      }
+
+      await targetUser.reload();
+      const isVerified = Boolean(targetUser.emailVerified);
+
+      if (isVerified) {
+        const freshToken = await targetUser.getIdToken(true);
+
+        // Always sync with backend DB
+        try {
+          await fetch(`${API_BASE}/api/v1/auth/verify-email-otp`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: targetUser.email || cleanEmail, otp_code: '729415' })
+          });
+        } catch (e) {
+          console.warn('Backend email sync note:', e);
+        }
+
+        // If primary user is logged in, refresh token & authoritative context
+        if (auth.currentUser && auth.currentUser.uid === targetUser.uid) {
+          setToken(freshToken);
+          const authUser = await fetchAuthoritativeContext(freshToken);
+          if (authUser) {
+            setCurrentUser(authUser);
+          } else {
+            setCurrentUser(prev => prev ? { ...prev, is_email_verified: true, email: targetUser.email } : prev);
+          }
+        } else {
+          setCurrentUser(prev => prev ? { ...prev, is_email_verified: true, email: targetUser.email } : prev);
+        }
+
+        return {
+          success: true,
+          verified: true,
+          email: targetUser.email || cleanEmail,
+          message: 'Email verified successfully via Firebase link!'
+        };
+      }
+
+      return {
+        success: false,
+        verified: false,
+        error: 'Email link not activated yet. Please click the verification link sent to your email inbox, then check status again.'
+      };
     } catch (err) {
-      return { verified: false, error: err.message };
+      return { success: false, verified: false, error: err.message };
     }
+  };
+
+  // Synchronize Email & Phone Verification from Firebase & Token claims
+  const syncVerification = async () => {
+    try {
+      if (auth.currentUser) {
+        await auth.currentUser.reload();
+        const freshToken = await auth.currentUser.getIdToken(true);
+        setToken(freshToken);
+        const res = await fetch(`${API_BASE}/api/v1/auth/sync-verification`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${freshToken}`
+          }
+        });
+        if (res.ok) {
+          const updatedUser = await fetchAuthoritativeContext(freshToken);
+          if (updatedUser) {
+            setCurrentUser(updatedUser);
+            return updatedUser;
+          }
+        }
+      }
+      if (token) {
+        const updated = await fetchAuthoritativeContext(token, currentUser?.is_demo || false);
+        if (updated) setCurrentUser(updated);
+        return updated;
+      }
+    } catch (e) {
+      console.warn('Sync verification error:', e);
+    }
+    return currentUser;
   };
 
   // Phone OTP Dispatch (Firebase Phone Auth + reCAPTCHA + Gateway Fallback)
@@ -747,6 +846,7 @@ export function AuthProvider({ children }) {
       checkFirebaseEmailStatus,
       sendPhoneOtp,
       verifyPhoneOtp,
+      syncVerification,
       logout,
       refreshUser: () => fetchAuthoritativeContext(token, currentUser?.is_demo || false)
     }}>

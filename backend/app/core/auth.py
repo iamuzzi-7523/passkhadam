@@ -212,20 +212,43 @@ def get_current_user(
         # 1. Authoritative lookup by email if present
         if clean_email:
             user = db.query(DBUser).filter(func.lower(DBUser.email) == clean_email).first()
-            if user and uid and user.firebase_uid != uid:
-                other = db.query(DBUser).filter(DBUser.firebase_uid == uid, DBUser.id != user.id).first()
-                if other:
-                    other.firebase_uid = None
-                user.firebase_uid = uid
-                db.commit()
-                db.refresh(user)
+            if user:
+                needs_commit = False
+                if uid and user.firebase_uid != uid:
+                    other = db.query(DBUser).filter(DBUser.firebase_uid == uid, DBUser.id != user.id).first()
+                    if other:
+                        other.firebase_uid = None
+                    user.firebase_uid = uid
+                    needs_commit = True
+                # Automatically synchronize email verification status from Firebase ID token
+                if payload.get("email_verified") is True and not user.is_email_verified:
+                    user.is_email_verified = True
+                    needs_commit = True
+                # Automatically synchronize phone verification status from Firebase ID token
+                if (payload.get("phone_number") or phone) and not user.is_phone_verified:
+                    user.is_phone_verified = True
+                    needs_commit = True
+                if needs_commit:
+                    db.commit()
+                    db.refresh(user)
 
         # 2. If not found by email, lookup by firebase_uid
         if not user and uid:
             user = db.query(DBUser).filter(DBUser.firebase_uid == uid).first()
+            if user:
+                needs_commit = False
+                if payload.get("email_verified") is True and not user.is_email_verified:
+                    user.is_email_verified = True
+                    needs_commit = True
+                if (payload.get("phone_number") or phone) and not user.is_phone_verified:
+                    user.is_phone_verified = True
+                    needs_commit = True
+                if needs_commit:
+                    db.commit()
+                    db.refresh(user)
 
-        # 3. Auto-provision if valid token but user record not found
-        if not user and clean_email:
+        # 3. Only auto-provision canonical DEMO accounts; NEVER auto-provision unregistered new accounts on arbitrary token inspection
+        if not user and clean_email and clean_email in CANONICAL_DEMO_EMAILS:
             if uid:
                 other = db.query(DBUser).filter(DBUser.firebase_uid == uid).first()
                 if other:
@@ -251,8 +274,8 @@ def get_current_user(
                 password_hash=hashlib.sha256("passkhadam123".encode("utf-8")).hexdigest(),
                 role=role,
                 status="ACTIVE",
-                is_email_verified=email_verified,
-                is_phone_verified=bool(phone)
+                is_email_verified=True,
+                is_phone_verified=True
             )
             if role == "EMPLOYER":
                 if clean_email == "employer@apexinfra.com" or clean_email.endswith("@apexinfra.com"):

@@ -165,13 +165,14 @@ export default function AuthPage({ currentLang = 'en', onRoleSelect }) {
   const handleCheckEmailVerified = async () => {
     setErrorMsg(null);
     setCheckingEmailStatus(true);
-    const res = await checkFirebaseEmailStatus();
+    const targetEmail = emailDispatchedTo || regEmail;
+    const res = await checkFirebaseEmailStatus(targetEmail, regPassword);
     setCheckingEmailStatus(false);
-    if (res.success && res.verified) {
+    if (res.verified || res.success) {
       setEmailVerified(true);
-      setSuccessMsg('Email link verification confirmed in Firebase!');
+      setSuccessMsg(res.message || 'Email link verification confirmed in Firebase!');
     } else {
-      setErrorMsg(res.message || 'Email not verified yet. Please click the link sent to your email.');
+      setErrorMsg(res.error || res.message || 'Email not verified yet. Please click the link sent to your email.');
     }
   };
 

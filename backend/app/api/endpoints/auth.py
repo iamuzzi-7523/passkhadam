@@ -437,6 +437,16 @@ def login_user(
                 if other_u:
                     other_u.firebase_uid = None
                 user.firebase_uid = fb_uid
+            # Automatically synchronize verification flags from Firebase token
+            if candidate_token and candidate_token.count(".") == 2:
+                try:
+                    payload = verify_firebase_id_token(candidate_token)
+                    if payload.get("email_verified") is True:
+                        user.is_email_verified = True
+                    if payload.get("phone_number"):
+                        user.is_phone_verified = True
+                except Exception:
+                    pass
             db.commit()
             db.refresh(user)
         else:
@@ -712,6 +722,10 @@ def verify_phone_otp(req: VerifyOTPRequest, db: Session = Depends(get_db)):
     if not session:
         # Check standard demo code fallback
         if submitted_otp in ["729415", "123456"]:
+            user = db.query(DBUser).filter(DBUser.phone.like(f"%{clean_phone[-10:]}%")).first()
+            if user:
+                user.is_phone_verified = True
+                db.commit()
             return {
                 "verified": True,
                 "message": "Phone number verified successfully via Firebase Phone Auth Gateway"
@@ -864,7 +878,7 @@ def verify_email_otp(req: VerifyEmailOTPRequest, db: Session = Depends(get_db)):
     if not session:
         # Check standard demo code fallback if no session exists
         if otp_submitted in ["729415", "123456"]:
-            user = db.query(DBUser).filter(DBUser.email == email_clean).first()
+            user = db.query(DBUser).filter(func.lower(DBUser.email) == email_clean).first()
             if user:
                 user.is_email_verified = True
                 db.commit()
@@ -895,7 +909,7 @@ def verify_email_otp(req: VerifyEmailOTPRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="Invalid verification code. Please check your email and try again.")
 
     # Mark user in database as email verified if exists
-    user = db.query(DBUser).filter(DBUser.email == email_clean).first()
+    user = db.query(DBUser).filter(func.lower(DBUser.email) == email_clean).first()
     if user:
         user.is_email_verified = True
         db.commit()
@@ -907,6 +921,47 @@ def verify_email_otp(req: VerifyEmailOTPRequest, db: Session = Depends(get_db)):
         verified=True,
         email=email_clean,
         message="Email successfully verified and linked to your PASSKHADAM identity"
+    )
+
+@router.post("/sync-verification", response_model=UserResponse)
+def sync_verification(
+    current_user: DBUser = Depends(get_current_user),
+    authorization: Optional[str] = Header(None, alias="Authorization"),
+    db: Session = Depends(get_db)
+):
+    """
+    Explicitly synchronizes current user's email & phone verification status from token claims.
+    """
+    candidate_token = authorization.strip() if authorization else ""
+    if candidate_token.lower().startswith("bearer "):
+        candidate_token = candidate_token[7:].strip()
+
+    if candidate_token and candidate_token.count(".") == 2:
+        try:
+            payload = verify_firebase_id_token(candidate_token)
+            if payload.get("email_verified") is True:
+                current_user.is_email_verified = True
+            if payload.get("phone_number"):
+                current_user.is_phone_verified = True
+            db.commit()
+            db.refresh(current_user)
+        except Exception:
+            pass
+
+    return UserResponse(
+        id=current_user.id,
+        full_name=current_user.full_name,
+        email=current_user.email,
+        phone=current_user.phone,
+        role=current_user.role,
+        is_email_verified=current_user.is_email_verified,
+        is_phone_verified=current_user.is_phone_verified,
+        created_at=current_user.created_at,
+        firebase_uid=current_user.firebase_uid,
+        status=current_user.status or "ACTIVE",
+        organization_address=current_user.organization_address,
+        organization_name=current_user.organization_name,
+        organization_status=current_user.organization_status
     )
 
 

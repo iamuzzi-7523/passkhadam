@@ -164,9 +164,9 @@ export default function AuthModal({ isOpen, onClose, onRoleSelect, initialTab = 
     setCheckingEmailStatus(true);
     const res = await checkFirebaseEmailStatus(targetEmail, regPassword);
     setCheckingEmailStatus(false);
-    if (res.verified) {
+    if (res.verified || res.success) {
       setEmailVerified(true);
-      setSuccessMsg('Email verified successfully via Google Firebase official verification link!');
+      setSuccessMsg(res.message || 'Email verified successfully via Google Firebase official verification link!');
     } else {
       setErrorMsg(res.error || 'Email link not activated yet. Please click the link sent to your inbox from noreply@passkhadam-live.firebaseapp.com, or verify using the 6-digit OTP code below.');
     }
