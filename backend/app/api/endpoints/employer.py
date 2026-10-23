@@ -36,7 +36,8 @@ from app.services.verification_engine import (
     verification_engine,
     VerificationEngineError,
     VerificationErrorCode,
-    ReplayAttackError
+    ReplayAttackError,
+    generate_demo_worker_presentation_response
 )
 
 def get_optional_current_user(
@@ -61,6 +62,21 @@ router = APIRouter()
 
 DEFAULT_EMPLOYER_ADDR = "0x90F79bf6EB2c4f870365E785982E1f101E93b906"
 
+def _enrich_employments_with_worker_name(emps: list, session: Session) -> list:
+    """Enrich employment stints with worker_name from DBWorkerProfile."""
+    worker_dids = {e.get("worker_did") for e in emps if e.get("worker_did")}
+    name_map = {}
+    if worker_dids:
+        profiles = session.query(DBWorkerProfile.did, DBWorkerProfile.full_name).filter(DBWorkerProfile.did.in_(worker_dids)).all()
+        name_map = {p[0]: p[1] for p in profiles if p[0] and p[1]}
+
+    enriched = []
+    for e in emps:
+        rec = dict(e)
+        rec["worker_name"] = name_map.get(e.get("worker_did"), e.get("worker_name", "Registered Worker"))
+        enriched.append(rec)
+    return enriched
+
 @router.get("/info")
 @router.get("/profile")
 def get_employer_info(
@@ -82,6 +98,7 @@ def get_employer_info(
             company_emps = [e for e in blockchain_service.employments.values() if e["employer_address"] == target_addr]
             active_workers = len([e for e in company_emps if e["status"] == "ACTIVE"])
             completed_contracts = len([e for e in company_emps if e["status"] == "COMPLETED"])
+            enriched_emps = _enrich_employments_with_worker_name(company_emps, db)
 
             return {
                 "id": org.id,
@@ -94,7 +111,7 @@ def get_employer_info(
                 "approved_natures": ["Contract", "Project-Based"],
                 "active_workers": active_workers,
                 "completed_contracts": completed_contracts,
-                "employments": company_emps
+                "employments": enriched_emps
             }
 
     # Demo fallback for unauthenticated requests
@@ -105,6 +122,7 @@ def get_employer_info(
     company_emps = [e for e in blockchain_service.employments.values() if e["employer_address"] == DEFAULT_EMPLOYER_ADDR]
     active_workers = len([e for e in company_emps if e["status"] == "ACTIVE"])
     completed_contracts = len([e for e in company_emps if e["status"] == "COMPLETED"])
+    enriched_emps = _enrich_employments_with_worker_name(company_emps, db)
 
     return {
         "address": DEFAULT_EMPLOYER_ADDR,
@@ -116,7 +134,7 @@ def get_employer_info(
         "approved_natures": org.get("natures", ["Contract", "Project-Based"]),
         "active_workers": active_workers,
         "completed_contracts": completed_contracts,
-        "employments": company_emps
+        "employments": enriched_emps
     }
 
 @router.post("/register-organization")
@@ -511,6 +529,19 @@ async def verify_worker_by_qr_image(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Verification failure: {str(e)}")
+
+@router.get("/demo-worker-qr")
+def get_employer_demo_worker_qr(
+    current_user: Optional[DBUser] = Depends(get_optional_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Returns a freshly signed ephemeral presentation QR code image for a verified demo worker.
+    Allows 1-click zero-camera simulation in EmployerPortal without file browsing or camera hardware.
+    """
+    if current_user and current_user.role not in ["EMPLOYER", "ADMIN"]:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only employers or admins can request demo worker QR")
+    return generate_demo_worker_presentation_response(db)
 
 @router.post("/request-category")
 def request_category(

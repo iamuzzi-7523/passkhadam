@@ -13,16 +13,20 @@ from fastapi import APIRouter, Depends, HTTPException, Response, Header, status,
 from sqlalchemy.orm import Session, object_session
 from sqlalchemy import func
 
-from app.models.db import get_db, SessionLocal, DBUser, DBWorkerProfile, DBEmployerOrganization, DBAadhaarRecord, DBAadhaarAuditLog
+from app.models.db import get_db, SessionLocal, DBUser, DBWorkerProfile, DBEmployerOrganization, DBAadhaarRecord, DBAadhaarAuditLog, DBEmployment
 from app.models.schemas import (
     WorkerProfileUpdate, AadhaarVerifyRequest,
     WorkerRegisterRequest, WorkerRegisterResponse,
-    WorkerLifecycleStatusResponse, UserResponse
+    WorkerLifecycleStatusResponse, UserResponse,
+    EmploymentRecordResponse, WorkerEmploymentHistoryResponse, WorkerSkillsUpdateRequest
 )
 from app.services.aadhaar_service import aadhaar_authority
 from app.services.ipfs_service import ipfs_service
 from app.services.blockchain_service import blockchain_service
-from app.services.verification_engine import verification_engine
+from app.services.verification_engine import (
+    verification_engine,
+    generate_demo_worker_presentation_response
+)
 from app.core.crypto import (
     generate_worker_did, encrypt_payload, decrypt_payload, sign_credential,
     hash_data, keccak_hash, build_w3c_verifiable_credential
@@ -36,6 +40,22 @@ router = APIRouter()
 # ============================================================================
 # HELPER FUNCTIONS: SERIALIZATION & AUTHORIZATION
 # ============================================================================
+
+def get_optional_current_user(
+    authorization: Optional[str] = Header(None, alias="Authorization"),
+    db: Session = Depends(get_db)
+) -> Optional[DBUser]:
+    if not authorization:
+        return None
+    try:
+        return get_current_user(authorization=authorization, db=db)
+    except HTTPException as e:
+        if e.status_code in (401, 403):
+            raise
+        return None
+    except Exception:
+        return None
+
 
 def require_worker_role(current_user: DBUser) -> None:
     """Enforces that the authenticated principal has the WORKER role."""
@@ -276,6 +296,87 @@ def serialize_worker_wallet(profile: DBWorkerProfile, db: Optional[Session] = No
         "credentials": credentials,
         "employments": employments,
         "claims": claims
+    }
+
+
+def serialize_worker_employment_history(profile: DBWorkerProfile, db: Session) -> dict:
+    """
+    Assembles authoritative employment history for a worker profile.
+    Reconciles SQLite DBEmployment with in-memory blockchain_service registry.
+    Strictly preserves discontinued and completed stints (Permanence Invariant).
+    """
+    worker_did = profile.did or ""
+    if not worker_did:
+        return {
+            "worker_did": "",
+            "employments": [],
+            "active_employments": [],
+            "historical_employments": [],
+            "active_count": 0,
+            "historical_count": 0,
+            "total_count": 0
+        }
+
+    seen_ids = set()
+    stints = []
+
+    # 1. Query persistent DBEmployment
+    db_emps = db.query(DBEmployment).filter(
+        DBEmployment.worker_did == worker_did
+    ).order_by(DBEmployment.id.desc()).all()
+
+    for de in db_emps:
+        seen_ids.add(de.id)
+        rec = {
+            "id": de.id,
+            "worker_did": de.worker_did,
+            "employer_address": de.employer_address,
+            "employer_name": de.employer_name,
+            "category": de.category,
+            "level": de.level or "Skilled",
+            "nature_of_employment": de.nature_of_employment or "Contract",
+            "job_role": de.job_role,
+            "location": de.location,
+            "start_date": de.start_date,
+            "end_date": de.end_date,
+            "status": de.status,
+            "status_reason": de.status_reason or "Stint Initiated",
+            "tx_hash": de.tx_hash,
+            "created_at": de.created_at.isoformat() if de.created_at else None,
+            "updated_at": de.updated_at.isoformat() if de.updated_at else None
+        }
+        stints.append(rec)
+
+    # 2. Reconcile with blockchain_service in-memory registry
+    for emp in blockchain_service.get_worker_employments(worker_did):
+        eid = emp.get("id")
+        if eid and eid not in seen_ids:
+            seen_ids.add(eid)
+            stints.append(emp)
+        elif eid and eid in seen_ids:
+            # Synchronize runtime status if memory holds updated status
+            for s in stints:
+                if s.get("id") == eid:
+                    mem_status = emp.get("status")
+                    if mem_status and mem_status != s.get("status"):
+                        s["status"] = mem_status
+                        s["status_reason"] = emp.get("status_reason", s.get("status_reason"))
+                        if emp.get("end_date"):
+                            s["end_date"] = emp.get("end_date")
+                    break
+
+    # 3. Partition into active vs historical stints
+    active_stints = [e for e in stints if (e.get("status") or "").upper() == "ACTIVE"]
+    historical_stints = [e for e in stints if (e.get("status") or "").upper() != "ACTIVE"]
+
+    return {
+        "worker_did": worker_did,
+        "employments": stints,
+        "active_employments": active_stints,
+        "historical_employments": historical_stints,
+        "active_count": len(active_stints),
+        "historical_count": len(historical_stints),
+        "total_count": len(stints)
     }
 
 
@@ -920,6 +1021,74 @@ def get_my_worker_wallet(
     return serialize_worker_wallet(profile, db=db)
 
 
+@router.get("/employment-history/me", response_model=WorkerEmploymentHistoryResponse)
+def get_my_employment_history(
+    current_user: DBUser = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Self-service endpoint: Retrieves the authenticated worker's own portable employment history.
+    Guarded by WORKER role requirement. Zero IDOR surface.
+    Permanence Invariant: Discontinued and completed stints remain permanently recorded.
+    """
+    require_worker_role(current_user)
+    profile = db.query(DBWorkerProfile).filter(DBWorkerProfile.user_id == current_user.id).first()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Worker profile not found")
+
+    return serialize_worker_employment_history(profile, db=db)
+
+
+@router.put("/skills/me")
+async def update_my_worker_skills(
+    request: Request,
+    current_user: DBUser = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Self-service endpoint: Updates worker trade / profession and skills list.
+    Guarded by WORKER role requirement.
+    """
+    require_worker_role(current_user)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    if isinstance(body, dict) and ("did" in body or "worker_did" in body):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Client-supplied DID is strictly forbidden. DIDs are derived server-side."
+        )
+
+    try:
+        req = WorkerSkillsUpdateRequest.model_validate(body)
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+    profile = db.query(DBWorkerProfile).filter(DBWorkerProfile.user_id == current_user.id).first()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Worker profile not found")
+
+    if req.worker_category:
+        profile.worker_category = req.worker_category
+    if req.skills is not None:
+        if isinstance(req.skills, list):
+            profile.skills_json = json.dumps(req.skills)
+        elif isinstance(req.skills, str):
+            profile.skills_json = json.dumps([req.skills])
+
+    db.commit()
+    db.refresh(profile)
+
+    return {
+        "message": "Worker trade and skills updated successfully",
+        "worker_category": profile.worker_category,
+        "skills": json.loads(profile.skills_json) if profile.skills_json else [],
+        "profile": serialize_worker_profile(profile, db=db)
+    }
+
+
 @router.get("/presentation/qr-card/me")
 def generate_my_qr_card(
     current_user: DBUser = Depends(get_current_user),
@@ -995,6 +1164,15 @@ def download_my_qr_image(
         media_type="image/png",
         headers={"Content-Disposition": f"attachment; filename=passkhadam_{profile.did[-8:]}_presentation.png"}
     )
+
+
+@router.get("/presentation/demo-qr")
+def get_general_demo_worker_qr(
+    current_user: Optional[DBUser] = Depends(get_optional_current_user),
+    db: Session = Depends(get_db)
+):
+    """General demo worker presentation generator for simulation across portals."""
+    return generate_demo_worker_presentation_response(db)
 
 
 # ============================================================================
@@ -1205,6 +1383,56 @@ def get_worker_wallet(
         raise HTTPException(status_code=404, detail="Worker profile not found")
 
     return serialize_worker_wallet(profile, db=db)
+
+
+@router.get("/employment-history/{user_id}", response_model=WorkerEmploymentHistoryResponse)
+def get_worker_employment_history_by_user_id(
+    user_id: int,
+    current_user: Optional[DBUser] = Depends(get_optional_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Parameterized worker employment history inspection.
+    RBAC Rules:
+    - WORKER: Can ONLY view their own history (user_id == current_user.id); otherwise 403.
+    - ADMIN: Permitted.
+    - EMPLOYER: Permitted if authorized approved employer organization.
+    - GOVERNMENT: Permitted if active government officer.
+    - Unauthenticated: 401 Unauthorized.
+    """
+    if current_user is not None:
+        if current_user.role == "WORKER":
+            if current_user.id != user_id:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Access denied: Workers can only view their own employment history"
+                )
+        elif current_user.role == "ADMIN":
+            pass
+        elif current_user.role == "EMPLOYER":
+            if not is_authorized_employer(current_user, db):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Access denied: Employer organization must be approved to view worker history"
+                )
+        elif current_user.role == "GOVERNMENT":
+            pass
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied: Unauthorized role for viewing worker history"
+            )
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication credentials were not provided"
+        )
+
+    profile = db.query(DBWorkerProfile).filter(DBWorkerProfile.user_id == user_id).first()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Worker profile not found")
+
+    return serialize_worker_employment_history(profile, db=db)
 
 
 @router.get("/presentation/qr-card/{user_id}")

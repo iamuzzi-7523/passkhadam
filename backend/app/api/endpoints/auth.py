@@ -248,6 +248,10 @@ def register_user(
                         profile.worker_category = req.worker_category
                     if getattr(req, "skills", None):
                         profile.skills_json = json.dumps(req.skills)
+                    if getattr(req, "origin_state", None):
+                        profile.origin_state = req.origin_state
+                    if getattr(req, "current_state", None):
+                        profile.current_state = req.current_state
 
             db.commit()
             db.refresh(existing)
@@ -778,33 +782,8 @@ def send_email_otp(req: SendEmailOTPRequest):
     # Reset any active lockout upon requesting a new OTP
     LOCKED_OUT_EMAILS.pop(email_clean, None)
 
-    # Deterministic test code for known test emails or random 6-digit code
-    otp_code = "729415" if ("worker@passkhadam.org" in email_clean or "test" in email_clean) else f"{secrets.randbelow(900000) + 100000}"
-    session_id = f"fb_em_sess_{uuid.uuid4().hex[:12]}"
-    expires_at = time.time() + 300
-
-    ACTIVE_EMAIL_OTPS[email_clean] = {
-        "otp": otp_code,
-        "session_id": session_id,
-        "expires_at": expires_at,
-        "attempts": 0
-    }
-
-    simulated_email = {
-        "to": email_clean,
-        "subject": "PASSKHADAM Email Verification Code",
-        "body": f"Your PASSKHADAM email verification code is {otp_code}. Valid for 5 minutes.",
-        "otp_code": otp_code
-    }
-
-    delivery_mode = "simulated"
-    # Anti-Suspension Protection:
-    # 1. Never send real SMTP to non-existent simulated test domains (@passkhadam.org, etc.)
-    # 2. Re-use existing session if requested within 30s cooldown (prevents rapid-fire bursts)
-    domain = email_clean.split("@")[-1] if "@" in email_clean else ""
-    is_mocked = hasattr(mailer.send_otp_email, "mock_calls") or hasattr(send_otp_email, "mock_calls") or hasattr(mailer.send_otp_email, "assert_called") or hasattr(send_otp_email, "assert_called")
-    is_dummy_domain = domain in ("passkhadam.org", "apexinfra.com", "example.com", "test.com", "local", "localhost", "uidai.gov.in", "maharashtra.gov.in")
-
+    # Rate Limiting Cooldown Check (< 30s):
+    # Re-use existing session if requested within 30s cooldown (prevents rapid-fire bursts / SMTP exhaustion)
     now = time.time()
     existing_session = ACTIVE_EMAIL_OTPS.get(email_clean)
     if existing_session and (existing_session.get("created_at", 0) + 30 > now) and ("worker@passkhadam.org" not in email_clean):
@@ -821,8 +800,33 @@ def send_email_otp(req: SendEmailOTPRequest):
             delivery_mode="cached"
         )
 
-    ACTIVE_EMAIL_OTPS[email_clean]["created_at"] = now
-    ACTIVE_EMAIL_OTPS[email_clean]["simulated_email"] = simulated_email
+    # Deterministic test code for known test emails or random 6-digit code
+    otp_code = "729415" if ("worker@passkhadam.org" in email_clean or "test" in email_clean) else f"{secrets.randbelow(900000) + 100000}"
+    session_id = f"fb_em_sess_{uuid.uuid4().hex[:12]}"
+    expires_at = now + 300
+
+    simulated_email = {
+        "to": email_clean,
+        "subject": "PASSKHADAM Email Verification Code",
+        "body": f"Your PASSKHADAM email verification code is {otp_code}. Valid for 5 minutes.",
+        "otp_code": otp_code
+    }
+
+    ACTIVE_EMAIL_OTPS[email_clean] = {
+        "otp": otp_code,
+        "session_id": session_id,
+        "expires_at": expires_at,
+        "attempts": 0,
+        "created_at": now,
+        "simulated_email": simulated_email
+    }
+
+    delivery_mode = "simulated"
+    # Anti-Suspension Protection:
+    # 1. Never send real SMTP to non-existent simulated test domains (@passkhadam.org, etc.)
+    domain = email_clean.split("@")[-1] if "@" in email_clean else ""
+    is_mocked = hasattr(mailer.send_otp_email, "mock_calls") or hasattr(send_otp_email, "mock_calls") or hasattr(mailer.send_otp_email, "assert_called") or hasattr(send_otp_email, "assert_called")
+    is_dummy_domain = domain in ("passkhadam.org", "apexinfra.com", "example.com", "test.com", "local", "localhost", "uidai.gov.in", "maharashtra.gov.in")
 
     if is_smtp_configured():
         if is_dummy_domain and not is_mocked:

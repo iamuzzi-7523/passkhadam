@@ -767,7 +767,7 @@ export function AuthProvider({ children }) {
       if (phoneConfirmationResult) {
         try {
           const userCredential = await phoneConfirmationResult.confirm(otp);
-          setCurrentUser(prev => ({ ...prev, is_phone_verified: true, phone: formattedPhone }));
+          setCurrentUser(prev => prev ? { ...prev, is_phone_verified: true, phone: formattedPhone } : null);
           return {
             success: true,
             user: userCredential?.user,
@@ -777,7 +777,7 @@ export function AuthProvider({ children }) {
           console.warn('Firebase confirmation error, checking fallback verification:', confErr);
           // If code matches test number preset, accept
           if (otp === '123456' || otp === '729415') {
-            setCurrentUser(prev => ({ ...prev, is_phone_verified: true, phone: formattedPhone }));
+            setCurrentUser(prev => prev ? { ...prev, is_phone_verified: true, phone: formattedPhone } : null);
             return { success: true, message: 'Phone verified successfully via test OTP' };
           }
         }
@@ -792,7 +792,7 @@ export function AuthProvider({ children }) {
         });
         const data = await res.json();
         if (res.ok && data.verified) {
-          setCurrentUser(prev => ({ ...prev, is_phone_verified: true, phone: formattedPhone }));
+          setCurrentUser(prev => prev ? { ...prev, is_phone_verified: true, phone: formattedPhone } : null);
           return { success: true, message: data.message };
         }
       } catch (backendErr) {
@@ -801,14 +801,14 @@ export function AuthProvider({ children }) {
 
       // 3. Fictional console test codes fallback
       if (otp.trim() === '123456' || otp.trim() === '729415') {
-        setCurrentUser(prev => ({ ...prev, is_phone_verified: true, phone: formattedPhone }));
+        setCurrentUser(prev => prev ? { ...prev, is_phone_verified: true, phone: formattedPhone } : null);
         return { success: true, message: 'Phone verified successfully via test OTP' };
       }
 
       return { success: false, error: 'Invalid verification code' };
     } catch (e) {
       if (otp.trim() === '123456' || otp.trim() === '729415') {
-        setCurrentUser(prev => ({ ...prev, is_phone_verified: true, phone: formattedPhone }));
+        setCurrentUser(prev => prev ? { ...prev, is_phone_verified: true, phone: formattedPhone } : null);
         return { success: true, message: 'Phone verified successfully' };
       }
       return { success: false, error: 'Failed to verify OTP' };

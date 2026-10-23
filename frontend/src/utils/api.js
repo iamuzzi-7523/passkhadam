@@ -29,6 +29,35 @@ export function formatMaskedAadhaar(raw) {
 }
 
 /**
+ * Formats a raw or partially typed Aadhaar string into standard 4-digit grouped format:
+ * "XXXX XXXX XXXX" (up to 14 characters total: 12 digits + 2 spaces).
+ * Non-digit characters are filtered out.
+ *
+ * @param {string|number} value
+ * @returns {string} Formatted Aadhaar string with spaces
+ */
+export function formatAadhaarInput(value) {
+  if (!value) return '';
+  const digits = String(value).replace(/\D/g, '').slice(0, 12);
+  const parts = [];
+  for (let i = 0; i < digits.length; i += 4) {
+    parts.push(digits.slice(i, i + 4));
+  }
+  return parts.join(' ');
+}
+
+/**
+ * Extracts raw numeric digits from any Aadhaar input, stripping all spaces and separators.
+ *
+ * @param {string|number} value
+ * @returns {string} Clean numeric string of digits (max 12)
+ */
+export function cleanAadhaarDigits(value) {
+  if (!value) return '';
+  return String(value).replace(/\D/g, '').slice(0, 12);
+}
+
+/**
  * Resolves desktop configuration synchronously or asynchronously from Electron preload bridge.
  */
 export function getDesktopConfig() {
@@ -100,6 +129,86 @@ export async function apiFetch(endpoint, options = {}) {
     ...restOptions,
     headers: mergedHeaders,
     body: finalBody,
+  });
+}
+
+/**
+ * Fetches the worker's immutable employment history ledger.
+ * Calls GET /api/v1/worker/employment-history/me with fallback to /wallet/me.
+ * 
+ * @returns {Promise<{worker_did: string, employments: Array, active_count: number, historical_count: number}>}
+ */
+export async function getEmploymentHistory() {
+  try {
+    const res = await apiFetch('/api/v1/worker/employment-history/me');
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch (e) {
+    console.warn('Dedicated employment history endpoint unavailable, falling back to wallet', e);
+  }
+
+  // Graceful fallback to wallet
+  const walletRes = await apiFetch('/api/v1/worker/wallet/me');
+  if (!walletRes.ok) {
+    throw new Error('Failed to fetch employment history');
+  }
+  const walletData = await walletRes.json();
+  const emps = walletData.employments || [];
+  const active = emps.filter(e => (e.status || '').toUpperCase() === 'ACTIVE');
+  const hist = emps.filter(e => (e.status || '').toUpperCase() !== 'ACTIVE');
+  return {
+    worker_did: walletData.worker_did,
+    employments: emps,
+    active_count: active.length,
+    historical_count: hist.length
+  };
+}
+
+/**
+ * Updates worker profile fields (skills, worker_category, current_state, address, etc.)
+ * Calls PUT /api/v1/worker/profile/me.
+ * 
+ * @param {Object} updatePayload - Fields to update { worker_category, skills, current_state, address, etc. }
+ * @returns {Promise<Object>} Updated profile response
+ */
+export async function updateWorkerProfile(updatePayload) {
+  const res = await apiFetch('/api/v1/worker/profile/me', {
+    method: 'PUT',
+    body: updatePayload
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.detail || 'Failed to update worker profile');
+  }
+  return data;
+}
+
+/**
+ * Convenience helper to update worker trade category and skills.
+ * 
+ * @param {string} workerCategory - Main trade or custom profession
+ * @param {string[]} skills - Array of skill strings
+ * @returns {Promise<Object>}
+ */
+export async function updateWorkerSkills(workerCategory, skills) {
+  try {
+    const res = await apiFetch('/api/v1/worker/skills/me', {
+      method: 'PUT',
+      body: {
+        worker_category: workerCategory,
+        skills: skills
+      }
+    });
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch (e) {
+    console.warn('Dedicated skills update endpoint failed, falling back to profile', e);
+  }
+  return updateWorkerProfile({
+    worker_category: workerCategory,
+    skills: skills
   });
 }
 

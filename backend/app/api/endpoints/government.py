@@ -17,7 +17,8 @@ from app.models.db import (
     DBGovernanceAuditLog,
     DBAdminAuditLog,
     DBWorkerCredential,
-    DBWorkerProfile
+    DBWorkerProfile,
+    DBEmployment
 )
 from app.models.schemas import (
     WelfareClaimRequest,
@@ -35,7 +36,8 @@ from app.services.verification_engine import (
     verification_engine,
     VerificationEngineError,
     VerificationErrorCode,
-    ReplayAttackError
+    ReplayAttackError,
+    generate_demo_worker_presentation_response
 )
 
 def get_optional_current_user(
@@ -393,6 +395,20 @@ async def verify_worker_by_qr_image(
         raise HTTPException(status_code=500, detail=f"Verification failure: {str(e)}")
 
 
+@router.get("/demo-worker-qr")
+def get_government_demo_worker_qr(
+    current_user: Optional[DBUser] = Depends(get_optional_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Returns a freshly signed ephemeral presentation QR code image for a verified demo worker.
+    Allows 1-click zero-camera simulation in GovernmentPortal without file browsing or camera hardware.
+    """
+    if current_user and current_user.role not in ["GOVERNMENT", "ADMIN"]:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only government officers or admins can request demo worker QR")
+    return generate_demo_worker_presentation_response(db)
+
+
 @router.get("/schemes")
 def list_welfare_schemes():
     return list(blockchain_service.schemes.values())
@@ -604,6 +620,16 @@ def resolve_employment_dispute(
     # Update employment status in blockchain_service
     emp["status"] = req.resolution_status.upper()
     emp["status_reason"] = req.resolution_notes
+    if req.resolution_status.upper() in ["COMPLETED", "TERMINATED", "DISMISSED", "RESIGNED", "DISCONTINUED"]:
+        emp["end_date"] = int(datetime.utcnow().timestamp())
+
+    # Persist status changes to DBEmployment in SQLite
+    db_emp = db.query(DBEmployment).filter(DBEmployment.id == emp_id).first()
+    if db_emp:
+        db_emp.status = req.resolution_status.upper()
+        db_emp.status_reason = req.resolution_notes
+        if req.resolution_status.upper() in ["COMPLETED", "TERMINATED", "DISMISSED", "RESIGNED", "DISCONTINUED"]:
+            db_emp.end_date = emp.get("end_date") or int(datetime.utcnow().timestamp())
 
     # Append event to employmentEvents
     if emp_id not in blockchain_service.employment_events:

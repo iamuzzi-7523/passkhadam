@@ -124,14 +124,30 @@ class WorkerProfileUpdate(BaseModel):
     current_state: Optional[str] = None
     address: Optional[str] = None
     worker_category: Optional[str] = None
-    skills: Optional[List[str]] = None
+    trade: Optional[str] = None
+    profession: Optional[str] = None
+    skills: Optional[Union[List[str], str]] = None
 
     @model_validator(mode="before")
     @classmethod
-    def reject_client_did(cls, data: Any) -> Any:
+    def normalize_profile_update(cls, data: Any) -> Any:
         if isinstance(data, dict):
             if "did" in data or "worker_did" in data:
                 raise ValueError("Client-supplied DID is strictly forbidden. DIDs are derived server-side.")
+            if not data.get("worker_category"):
+                if data.get("trade"):
+                    data["worker_category"] = data["trade"]
+                elif data.get("profession"):
+                    data["worker_category"] = data["profession"]
+            if "skills" in data and isinstance(data["skills"], str):
+                raw = data["skills"].strip()
+                if raw.startswith("[") and raw.endswith("]"):
+                    try:
+                        data["skills"] = json.loads(raw)
+                    except Exception:
+                        data["skills"] = [s.strip() for s in raw.strip("[]").split(",") if s.strip()]
+                else:
+                    data["skills"] = [s.strip() for s in raw.split(",") if s.strip()]
         return data
 
 class AadhaarVerifyRequest(BaseModel):
@@ -297,7 +313,7 @@ class CreateEmploymentRequest(BaseModel):
 
 class UpdateEmploymentStatusRequest(BaseModel):
     employment_id: int
-    new_status: str # ACTIVE | COMPLETED | TERMINATED | DISMISSED | RESIGNED | SUSPENDED
+    new_status: str # ACTIVE | COMPLETED | TERMINATED | DISMISSED | RESIGNED | SUSPENDED | DISCONTINUED
     reason: str
 
 # Government & Welfare Schemas
@@ -818,5 +834,70 @@ class DisputeResolutionResponse(BaseModel):
     settlement_amount_inr: float = 0.0
     adjudicated_by: str
     adjudicated_at: datetime
+
+
+# ============================================================================
+# EMPLOYMENT HISTORY & SKILLS SCHEMAS (Milestone 2)
+# ============================================================================
+
+class EmploymentRecordResponse(BaseModel):
+    id: int
+    worker_did: str
+    employer_address: str
+    employer_name: str
+    category: str
+    level: str = "Skilled"
+    nature_of_employment: str = "Contract"
+    job_role: str
+    location: str
+    start_date: int
+    end_date: int = 0
+    status: str
+    status_reason: Optional[str] = None
+    tx_hash: Optional[str] = None
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class WorkerEmploymentHistoryResponse(BaseModel):
+    worker_did: str
+    employments: List[Dict[str, Any]]
+    active_employments: Optional[List[Dict[str, Any]]] = None
+    historical_employments: Optional[List[Dict[str, Any]]] = None
+    active_count: int
+    historical_count: int
+    total_count: Optional[int] = None
+
+
+class WorkerSkillsUpdateRequest(BaseModel):
+    skills: Union[List[str], str]
+    worker_category: Optional[str] = None
+    trade: Optional[str] = None
+    profession: Optional[str] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_fields(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            if "did" in data or "worker_did" in data:
+                raise ValueError("Client-supplied DID is strictly forbidden. DIDs are derived server-side.")
+            if not data.get("worker_category"):
+                if data.get("trade"):
+                    data["worker_category"] = data["trade"]
+                elif data.get("profession"):
+                    data["worker_category"] = data["profession"]
+            if "skills" in data and isinstance(data["skills"], str):
+                raw = data["skills"].strip()
+                if raw.startswith("[") and raw.endswith("]"):
+                    try:
+                        data["skills"] = json.loads(raw)
+                    except Exception:
+                        data["skills"] = [s.strip() for s in raw.strip("[]").split(",") if s.strip()]
+                else:
+                    data["skills"] = [s.strip() for s in raw.split(",") if s.strip()]
+        return data
 
 

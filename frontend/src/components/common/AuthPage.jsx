@@ -23,6 +23,7 @@ export default function AuthPage({ currentLang = 'en', onRoleSelect }) {
   const [regPassword, setRegPassword] = useState('');
   const [regRole, setRegRole] = useState('WORKER'); // WORKER or EMPLOYER only
   const [workerCategory, setWorkerCategory] = useState('Mason');
+  const [customProfession, setCustomProfession] = useState('');
   const [workerOriginState, setWorkerOriginState] = useState('Karnataka');
   
   // Employer Org fields
@@ -186,7 +187,9 @@ export default function AuthPage({ currentLang = 'en', onRoleSelect }) {
       setOtpSent(true);
       setSmsNotification(res.message);
       setSuccessMsg(res.message);
-      if (res.simulated && res.otp_hint) {
+      if (res.is_test_number) {
+        setOtpCode('123456');
+      } else if (res.otp_hint) {
         setOtpCode(res.otp_hint);
       }
     } else {
@@ -220,14 +223,24 @@ export default function AuthPage({ currentLang = 'en', onRoleSelect }) {
       }
     }
 
+    let effectiveCategory = workerCategory;
+    if (regRole === 'WORKER' && workerCategory === 'Other') {
+      const cleanCustom = customProfession.trim();
+      if (!cleanCustom) {
+        setErrorMsg('Please specify your custom trade or profession');
+        return;
+      }
+      effectiveCategory = cleanCustom;
+    }
+
     const payload = {
       full_name: regName,
       email: regEmail,
       phone: regPhone,
       password: regPassword,
       role: regRole,
-      worker_category: regRole === 'WORKER' ? workerCategory : null,
-      skills: regRole === 'WORKER' ? [workerCategory] : null,
+      worker_category: regRole === 'WORKER' ? effectiveCategory : null,
+      skills: regRole === 'WORKER' ? [effectiveCategory] : null,
       origin_state: regRole === 'WORKER' ? workerOriginState : null,
       current_state: regRole === 'WORKER' ? 'Karnataka' : null,
       organization_name: regRole === 'EMPLOYER' ? orgName : null,
@@ -610,6 +623,7 @@ export default function AuthPage({ currentLang = 'en', onRoleSelect }) {
                       <option value="Steel Fixer">Steel Fixer & Barbender</option>
                       <option value="Tile Setter">Tile & Marble Flooring Setter</option>
                       <option value="General Construction">General Construction Labour</option>
+                      <option value="Other">Other / Custom Trade...</option>
                     </select>
                   </div>
                   <div>
@@ -633,6 +647,22 @@ export default function AuthPage({ currentLang = 'en', onRoleSelect }) {
                       <option value="Jharkhand">Jharkhand</option>
                     </select>
                   </div>
+                  {workerCategory === 'Other' && (
+                    <div className="col-span-1 sm:col-span-2 pt-2 border-t border-slate-800/80">
+                      <label className="block text-[11px] font-medium text-amber-300 mb-1 flex items-center gap-1.5">
+                        <span>Specify Custom Trade / Specialization</span>
+                        <span className="text-[10px] text-slate-400 font-normal">(e.g. Scaffolder, Solar Technician, Rigger)</span>
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="Enter your specialized trade or profession..."
+                        value={customProfession}
+                        onChange={(e) => setCustomProfession(e.target.value)}
+                        className="w-full px-3 py-1.5 bg-slate-900 border border-amber-500/40 rounded-lg text-xs text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400"
+                      />
+                    </div>
+                  )}
                 </div>
               )}
 

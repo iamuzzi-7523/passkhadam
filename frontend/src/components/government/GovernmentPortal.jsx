@@ -228,6 +228,39 @@ export default function GovernmentPortal({ currentLang = 'en' }) {
         </div>
       )}
 
+      {/* Feature 16: Inter-State Welfare Portability & Sovereign Cooldown Invariants */}
+      <div className="p-4 rounded-2xl bg-slate-900 border border-purple-500/20 text-xs text-slate-300 space-y-2 shadow-lg">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 font-bold text-white text-sm">
+            <Landmark className="w-4 h-4 text-purple-400 shrink-0" />
+            <span>Inter-State Welfare Portability &amp; Sovereign Cooldown Invariants</span>
+          </div>
+          <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-purple-500/15 text-purple-300 border border-purple-500/30">
+            Direct Benefit Transfer (DBT)
+          </span>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-1 text-[11px]">
+          <div className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800 space-y-1">
+            <span className="font-semibold text-purple-300 block">1. Inter-State Portability</span>
+            <p className="text-slate-400 leading-relaxed">
+              Migrant workers registered in any Indian state are recognized across state borders without duplicate local registrations.
+            </p>
+          </div>
+          <div className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800 space-y-1">
+            <span className="font-semibold text-blue-300 block">2. Zero-Camera Verification</span>
+            <p className="text-slate-400 leading-relaxed">
+              Officers can upload presentation QR files or simulate verification from pre-seeded demo worker profiles.
+            </p>
+          </div>
+          <div className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800 space-y-1">
+            <span className="font-semibold text-emerald-300 block">3. Automated Policy Cooldown</span>
+            <p className="text-slate-400 leading-relaxed">
+              Smart contracts enforce 30-day (Scheme 1) and 60-day (Scheme 2) cooldown periods to prevent duplicate benefit claims.
+            </p>
+          </div>
+        </div>
+      </div>
+
       {/* Verification Zone: QR Upload and Live Stepper */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div>

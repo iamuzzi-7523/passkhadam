@@ -529,7 +529,7 @@ class DBEmployment(Base):
     location = Column(String(150), nullable=False)
     start_date = Column(Integer, nullable=False) # Unix timestamp
     end_date = Column(Integer, default=0, nullable=False) # Unix timestamp
-    status = Column(String(50), default="ACTIVE", nullable=False, index=True) # ACTIVE | COMPLETED | TERMINATED | RESIGNED | DISMISSED
+    status = Column(String(50), default="ACTIVE", nullable=False, index=True) # ACTIVE | COMPLETED | TERMINATED | RESIGNED | DISMISSED | SUSPENDED | DISCONTINUED
     status_reason = Column(String(255), default="Stint Initiated", nullable=True)
     tx_hash = Column(String(128), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)

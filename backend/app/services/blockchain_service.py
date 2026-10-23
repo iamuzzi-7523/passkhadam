@@ -404,13 +404,31 @@ class BlockchainService:
         return None
 
     def is_worker_valid(self, did: str) -> bool:
-        """Checks if worker DID is registered and active on blockchain or cached ledger."""
+        """
+        Checks if worker DID is registered and active on blockchain or cached/database ledger.
+        Gracefully falls back to cached ledger and SQLite DBWorkerProfile if the contract call
+        returns False (e.g. local/demo DID on an external testnet) or raises an exception,
+        while strictly preserving explicit on-chain and local revocation invariants.
+        """
+        if not did:
+            return False
+
         self.check_connection()
         if self.is_connected and self.worker_identity_contract:
             try:
-                return bool(self.worker_identity_contract.functions.isWorkerValid(did).call())
+                onchain_valid = bool(self.worker_identity_contract.functions.isWorkerValid(did).call())
+                if onchain_valid:
+                    # Invariant: If on-chain reports valid, ensure local memory cache does not carry an explicit revocation
+                    cached = self.worker_registry.get(did)
+                    if cached and cached.get("is_revoked"):
+                        return False
+                    return True
             except Exception:
                 pass
+
+        # Robust Fallback: Query authoritative local state via get_worker(did)
+        # get_worker queries: 1) on-chain getWorkerByDid (capturing on-chain revocation),
+        # 2) in-memory cache self.worker_registry, 3) persistent SQLite DBWorkerProfile.
         w = self.get_worker(did)
         return bool(w and w.get("is_registered") and not w.get("is_revoked"))
 
@@ -509,6 +527,12 @@ class BlockchainService:
                         "status_reason": de.status_reason or "Historical Stint",
                         "tx_hash": de.tx_hash
                     }
+                    if de.id not in self.employment_events:
+                        self.employment_events[de.id] = [{
+                            "status": de.status,
+                            "reason": de.status_reason or "Historical Stint",
+                            "timestamp": de.start_date or int(time.time())
+                        }]
                     if de.id >= self.next_emp_id:
                         self.next_emp_id = de.id + 1
 
@@ -947,23 +971,55 @@ class BlockchainService:
             logger.warning(f"Failed to persist DBEmployment: {e}")
         return record
 
-    def update_employment_status(self, emp_id: int, caller_address: str, new_status: str, reason: str):
+    def update_employment_status(self, emp_id: int, caller_address: str, new_status: str, reason: str, db=None):
+        # 1. Lazy-load from DB if record not currently in memory
+        if emp_id not in self.employments:
+            try:
+                from app.models.db import SessionLocal, DBEmployment
+                chk_db = db or SessionLocal()
+                chk_close = (db is None)
+                try:
+                    de = chk_db.query(DBEmployment).filter(DBEmployment.id == emp_id).first()
+                    if de:
+                        self.employments[de.id] = {
+                            "id": de.id,
+                            "worker_did": de.worker_did,
+                            "employer_address": de.employer_address,
+                            "employer_name": de.employer_name,
+                            "category": de.category,
+                            "level": de.level,
+                            "nature_of_employment": de.nature_of_employment,
+                            "job_role": de.job_role,
+                            "location": de.location,
+                            "start_date": de.start_date,
+                            "end_date": de.end_date,
+                            "status": de.status,
+                            "status_reason": de.status_reason or "Historical Stint",
+                            "tx_hash": de.tx_hash
+                        }
+                finally:
+                    if chk_close:
+                        chk_db.close()
+            except Exception as e:
+                logger.warning(f"Error checking DBEmployment for #{emp_id}: {e}")
+
         if emp_id not in self.employments:
             raise ValueError("Employment record not found")
         # Scoped authority: only the employing organization can update its employment record
         if self.employments[emp_id]["employer_address"] != caller_address and caller_address != "ADMIN":
             raise PermissionError("Unauthorized: Only employing organization can update employment status")
 
-        valid_statuses = ["ACTIVE", "COMPLETED", "TERMINATED", "DISMISSED", "RESIGNED", "SUSPENDED"]
+        # 2. Status enum validation (including DISCONTINUED)
+        valid_statuses = ["ACTIVE", "COMPLETED", "TERMINATED", "DISMISSED", "RESIGNED", "SUSPENDED", "DISCONTINUED"]
         if new_status not in valid_statuses:
             raise ValueError(f"Invalid status '{new_status}'. Allowed: {valid_statuses}")
 
         self.employments[emp_id]["status"] = new_status
         self.employments[emp_id]["status_reason"] = reason
-        if new_status in ["COMPLETED", "TERMINATED", "DISMISSED", "RESIGNED"]:
+        if new_status in ["COMPLETED", "TERMINATED", "DISMISSED", "RESIGNED", "DISCONTINUED"]:
             self.employments[emp_id]["end_date"] = int(time.time())
 
-        # Append to immutable event history (preserves audit trail)
+        # 3. Append to immutable event history (preserves audit trail)
         if emp_id not in self.employment_events:
             self.employment_events[emp_id] = []
         self.employment_events[emp_id].append({
@@ -971,6 +1027,34 @@ class BlockchainService:
             "reason": reason,
             "timestamp": int(time.time())
         })
+
+        # 4. Persist update to DBEmployment in SQLite
+        close_db = False
+        try:
+            from app.models.db import SessionLocal, DBEmployment
+            session = db
+            if session is None:
+                session = SessionLocal()
+                close_db = True
+            try:
+                db_emp = session.query(DBEmployment).filter(DBEmployment.id == emp_id).first()
+                if db_emp:
+                    db_emp.status = new_status
+                    db_emp.status_reason = reason
+                    if new_status in ["COMPLETED", "TERMINATED", "DISMISSED", "RESIGNED", "DISCONTINUED"]:
+                        db_emp.end_date = self.employments[emp_id]["end_date"]
+                    session.commit()
+                    session.refresh(db_emp)
+            except Exception as e:
+                session.rollback()
+                logger.warning(f"Failed to persist DBEmployment status update for #{emp_id}: {e}")
+            finally:
+                if close_db:
+                    session.close()
+        except Exception as e:
+            logger.warning(f"Session error in update_employment_status: {e}")
+
+        return self.employments[emp_id]
 
     def get_worker_employments(self, worker_did: str) -> List[Dict[str, Any]]:
         # Returns all historical and active employments (immutable history)

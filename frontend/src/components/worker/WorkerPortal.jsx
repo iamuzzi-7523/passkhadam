@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { 
   User, CheckCircle, AlertTriangle, QrCode, Shield, Briefcase, 
-  Download, RefreshCw, Key, Award, FileText, ChevronRight, MapPin, Sparkles, Volume2, Navigation
+  Download, RefreshCw, Key, Award, FileText, ChevronRight, MapPin, Sparkles, Volume2, Navigation,
+  CheckCircle2, ShieldCheck, Clock
 } from 'lucide-react';
 import VoiceNarrator from '../common/VoiceNarrator';
 import { getTranslation } from '../../i18n/translations';
 import { useAuth } from '../../context/AuthContext';
-import { apiFetch } from '../../utils/api';
+import { apiFetch, formatAadhaarInput, cleanAadhaarDigits } from '../../utils/api';
 
 const INDIAN_STATES = [
   'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh',
@@ -16,6 +17,90 @@ const INDIAN_STATES = [
   'Rajasthan', 'Sikkim', 'Tamil Nadu', 'Telangana', 'Tripura',
   'Uttar Pradesh', 'Uttarakhand', 'West Bengal', 'Delhi', 'Jammu & Kashmir', 'Ladakh', 'Puducherry'
 ];
+
+const STANDARD_TRADES = [
+  'Mason',
+  'Electrician',
+  'Plumber',
+  'Carpenter',
+  'Painter',
+  'Welder',
+  'Heavy Machinery Operator',
+  'Driver',
+  'Steel Fixer',
+  'Tile Setter',
+  'General Construction'
+];
+
+const SUGGESTED_SKILLS_MAP = {
+  Mason: ['Bricklaying', 'Concreting', 'Plastering', 'Formwork', 'Scaffolding', 'Mortar Mixing'],
+  Electrician: ['Conduit Wiring', 'Switchgear', 'Panel Installation', 'Solar PV', 'Earthing', 'Fault Finding'],
+  Plumber: ['PVC Piping', 'GI Piping', 'Drainage Systems', 'Sanitary Fixtures', 'Water Pumps', 'Leak Detection'],
+  Carpenter: ['Formwork', 'Framing', 'Door & Window Fitting', 'Scaffolding', 'Roof Trussing'],
+  Painter: ['Surface Preparation', 'Primer Application', 'Emulsion Painting', 'Enamel Coating', 'Spray Painting'],
+  Welder: ['Arc Welding', 'MIG Welding', 'TIG Welding', 'Gas Cutting', 'Structural Steel Fabrication'],
+  'Heavy Machinery Operator': ['Excavator Operation', 'Backhoe Loader', 'Dump Truck', 'Compactor', 'Safety Rigging'],
+  Driver: ['Heavy Commercial Vehicle', 'Light Commercial Vehicle', 'Route Logistics', 'Vehicle Maintenance'],
+  'Steel Fixer': ['Rebar Cutting', 'Rebar Bending', 'Mesh Tying', 'Column Caging'],
+  'Tile Setter': ['Ceramic Tiling', 'Marble Flooring', 'Granite Fitting', 'Tile Grouting'],
+  'General Construction': ['Site Clearance', 'Material Handling', 'Concrete Pouring', 'Trench Digging']
+};
+
+const formatTimestamp = (ts) => {
+  if (!ts) return '';
+  const date = new Date(ts > 1e11 ? ts : ts * 1000);
+  return date.toLocaleDateString('en-IN', { year: 'numeric', month: 'short', day: 'numeric' });
+};
+
+const renderEmploymentStatusBadge = (status) => {
+  const norm = (status || '').toUpperCase();
+  switch (norm) {
+    case 'ACTIVE':
+      return (
+        <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 flex items-center gap-1.5 shadow-sm shadow-emerald-500/10">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+          ACTIVE
+        </span>
+      );
+    case 'COMPLETED':
+      return (
+        <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-500/20 text-blue-400 border border-blue-500/40 flex items-center gap-1 shadow-sm shadow-blue-500/10">
+          ✓ COMPLETED
+        </span>
+      );
+    case 'DISCONTINUED':
+      return (
+        <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/40 flex items-center gap-1 shadow-sm shadow-amber-500/10">
+          ⚠️ DISCONTINUED
+        </span>
+      );
+    case 'TERMINATED':
+    case 'DISMISSED':
+      return (
+        <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-500/20 text-rose-400 border border-rose-500/40 flex items-center gap-1 shadow-sm shadow-rose-500/10">
+          ✕ {norm}
+        </span>
+      );
+    case 'RESIGNED':
+      return (
+        <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/40 flex items-center gap-1">
+          RESIGNED
+        </span>
+      );
+    case 'SUSPENDED':
+      return (
+        <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-yellow-500/20 text-yellow-300 border border-yellow-500/40 flex items-center gap-1">
+          SUSPENDED
+        </span>
+      );
+    default:
+      return (
+        <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-slate-800 text-slate-300 border border-slate-700">
+          {status || 'UNKNOWN'}
+        </span>
+      );
+  }
+};
 
 export default function WorkerPortal({ currentLang = 'en' }) {
   const { currentUser } = useAuth();
@@ -35,6 +120,17 @@ export default function WorkerPortal({ currentLang = 'en' }) {
   const [errorMsg, setErrorMsg] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
 
+  const [employmentHistory, setEmploymentHistory] = useState(null);
+  const [historyFilter, setHistoryFilter] = useState('ALL'); // 'ALL' | 'ACTIVE' | 'HISTORICAL'
+
+  // Skills modal state
+  const [showSkillsModal, setShowSkillsModal] = useState(false);
+  const [modalTrade, setModalTrade] = useState('Mason');
+  const [customTradeInput, setCustomTradeInput] = useState('');
+  const [modalSkills, setModalSkills] = useState([]);
+  const [newSkillInput, setNewSkillInput] = useState('');
+  const [savingSkills, setSavingSkills] = useState(false);
+
   useEffect(() => {
     if (currentUser?.full_name && !nameInput) {
       setNameInput(currentUser.full_name);
@@ -53,6 +149,13 @@ export default function WorkerPortal({ currentLang = 'en' }) {
           const wRes = await apiFetch('/api/v1/worker/wallet/me');
           if (wRes.ok) setWallet(await wRes.json());
 
+          try {
+            const histRes = await apiFetch('/api/v1/worker/employment-history/me');
+            if (histRes.ok) setEmploymentHistory(await histRes.json());
+          } catch (err) {
+            console.warn('Employment history fetch error', err);
+          }
+
           // Revalidate dynamic source status before fetching QR presentation
           if (p.aadhaar_status === 'ACTIVE') {
             const qrRes = await apiFetch('/api/v1/worker/presentation/qr-card/me');
@@ -69,6 +172,7 @@ export default function WorkerPortal({ currentLang = 'en' }) {
         } else {
           setQrData(null);
           setWallet(null);
+          setEmploymentHistory(null);
         }
       }
     } catch (e) {
@@ -77,6 +181,92 @@ export default function WorkerPortal({ currentLang = 'en' }) {
       setLoading(false);
     }
   };
+
+  const handleOpenSkillsModal = () => {
+    const currentCategory = profile?.worker_category || 'Mason';
+    if (STANDARD_TRADES.includes(currentCategory)) {
+      setModalTrade(currentCategory);
+      setCustomTradeInput('');
+    } else {
+      setModalTrade('Other');
+      setCustomTradeInput(currentCategory);
+    }
+    setModalSkills(Array.isArray(profile?.skills) ? [...profile.skills] : []);
+    setNewSkillInput('');
+    setErrorMsg('');
+    setShowSkillsModal(true);
+  };
+
+  const handleAddSkill = () => {
+    const trimmed = newSkillInput.trim();
+    if (trimmed && !modalSkills.includes(trimmed)) {
+      setModalSkills([...modalSkills, trimmed]);
+      setNewSkillInput('');
+    }
+  };
+
+  const handleRemoveSkill = (index) => {
+    setModalSkills(modalSkills.filter((_, idx) => idx !== index));
+  };
+
+  const handleAddSuggestedSkill = (skill) => {
+    if (skill && !modalSkills.includes(skill)) {
+      setModalSkills([...modalSkills, skill]);
+    }
+  };
+
+  const handleSaveSkillsAndTrade = async (e) => {
+    e.preventDefault();
+    setSavingSkills(true);
+    setErrorMsg('');
+    setSuccessMsg('');
+    try {
+      const selectedCategory = modalTrade === 'Other' ? (customTradeInput.trim() || 'Other') : modalTrade;
+      const res = await apiFetch('/api/v1/worker/skills/me', {
+        method: 'PUT',
+        body: {
+          worker_category: selectedCategory,
+          skills: modalSkills
+        }
+      });
+      if (!res.ok) {
+        // Fallback to /profile/me if /skills/me fails
+        const fallbackRes = await apiFetch('/api/v1/worker/profile/me', {
+          method: 'PUT',
+          body: {
+            worker_category: selectedCategory,
+            skills: modalSkills
+          }
+        });
+        if (!fallbackRes.ok) {
+          const errData = await fallbackRes.json();
+          throw new Error(errData.detail || 'Failed to update skills and trade profile');
+        }
+      }
+      setSuccessMsg('Trade and skills profile successfully updated!');
+      setShowSkillsModal(false);
+      await fetchWorkerData();
+    } catch (err) {
+      setErrorMsg(err.message || 'Error updating skills');
+    } finally {
+      setSavingSkills(false);
+    }
+  };
+
+  const effectiveEmployments = employmentHistory?.employments || wallet?.employments || [];
+  const activeCount = employmentHistory?.active_count !== undefined 
+    ? employmentHistory.active_count 
+    : effectiveEmployments.filter(e => (e.status || '').toUpperCase() === 'ACTIVE').length;
+  const historicalCount = employmentHistory?.historical_count !== undefined 
+    ? employmentHistory.historical_count 
+    : effectiveEmployments.filter(e => (e.status || '').toUpperCase() !== 'ACTIVE').length;
+
+  const filteredEmployments = effectiveEmployments.filter(emp => {
+    const isActive = (emp.status || '').toUpperCase() === 'ACTIVE';
+    if (historyFilter === 'ACTIVE') return isActive;
+    if (historyFilter === 'HISTORICAL') return !isActive;
+    return true;
+  });
 
   useEffect(() => {
     fetchWorkerData();
@@ -97,9 +287,13 @@ export default function WorkerPortal({ currentLang = 'en' }) {
     setErrorMsg("");
     setSuccessMsg("");
     try {
+      const cleanAadhaar = aadhaarInput.replace(/\s+/g, '');
+      if (cleanAadhaar.length !== 12 || !/^\d{12}$/.test(cleanAadhaar)) {
+        throw new Error("Aadhaar number must contain exactly 12 numeric digits (e.g. 1234 5678 4821).");
+      }
       const res = await apiFetch('/api/v1/worker/verify-aadhaar/me', {
         method: "POST",
-        body: { aadhaar_number: aadhaarInput, full_name: nameInput }
+        body: { aadhaar_number: cleanAadhaar, full_name: nameInput.trim() }
       });
       const data = await res.json();
       if (!res.ok) {
@@ -385,6 +579,59 @@ export default function WorkerPortal({ currentLang = 'en' }) {
         )}
       </div>
 
+      {/* Feature 16: Actionable Guidance Notice for Unanchored Worker Identity */}
+      {!profile?.is_credential_anchored && (
+        <div className="bg-gradient-to-r from-blue-950/70 via-slate-900 to-indigo-950/70 border border-blue-500/30 rounded-2xl p-5 shadow-xl space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-blue-500/20 pb-3">
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-xl bg-blue-600/20 border border-blue-500/40 text-blue-400 flex items-center justify-center">
+                <ShieldCheck className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-bold text-white text-sm">Action Required: Verify Government Identity to Activate Wallet</h3>
+                <p className="text-[11px] text-blue-200/80">Step 2 of 2 in your decentralized digital identity onboarding</p>
+              </div>
+            </div>
+            <button
+              onClick={() => setShowAadhaarModal(true)}
+              className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-all shadow-md shadow-blue-600/30 flex items-center gap-1.5 shrink-0"
+            >
+              <Shield className="w-4 h-4" />
+              <span>Verify Government Identity (Aadhaar) Now</span>
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+            <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-800/80 space-y-1">
+              <span className="text-[11px] font-semibold text-emerald-400 flex items-center gap-1">
+                <CheckCircle className="w-3.5 h-3.5" /> Step 1: Contact Verified
+              </span>
+              <p className="text-[11px] text-slate-300">
+                Email and phone SMS dual verification confirmed on your account.
+              </p>
+            </div>
+
+            <div className="p-3 rounded-xl bg-slate-950/80 border border-blue-500/30 space-y-1">
+              <span className="text-[11px] font-semibold text-blue-300 flex items-center gap-1">
+                <Clock className="w-3.5 h-3.5" /> Step 2: Anchor Decentralized DID
+              </span>
+              <p className="text-[11px] text-slate-300">
+                Verify 12-digit Aadhaar to issue your Ed25519 cryptographic DID and portable W3C wallet.
+              </p>
+            </div>
+
+            <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-800/80 space-y-1">
+              <span className="text-[11px] font-semibold text-cyan-300 flex items-center gap-1">
+                <Key className="w-3.5 h-3.5" /> Zero PII Leak Guarantee
+              </span>
+              <p className="text-[11px] text-slate-300">
+                Raw Aadhaar numbers are never stored on blockchain. Only one-way privacy hashes are anchored.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* VERIFIED GOVERNMENT DOCUMENT VISUAL (P1 Missing Requirement) */}
       {profile?.is_credential_anchored && (
         <div className={`border rounded-2xl p-6 shadow-2xl relative overflow-hidden ${getDocumentCardClasses(profile?.aadhaar_status)}`}>
@@ -461,6 +708,64 @@ export default function WorkerPortal({ currentLang = 'en' }) {
         {/* Left 2 Cols: Credential Wallet & Employment History */}
         <div className="xl:col-span-2 space-y-6">
           
+          {/* Skills & Trade Profile Card */}
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-amber-400" />
+                <div>
+                  <h3 className="font-bold text-white text-base">My Trade & Skills Profile</h3>
+                  <p className="text-[11px] text-slate-400">Verified trade category and self-declared portable trade skills</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleOpenSkillsModal}
+                className="px-3 py-1.5 rounded-xl bg-blue-600/20 hover:bg-blue-600/40 text-blue-300 border border-blue-500/30 text-xs font-semibold transition flex items-center gap-1.5 shadow-sm"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-blue-400" />
+                <span>Manage Skills & Trade</span>
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="p-3.5 rounded-xl bg-slate-950/80 border border-slate-800 space-y-1">
+                <span className="text-[11px] text-slate-400 block font-medium">Primary Trade / Profession</span>
+                <span className="text-sm font-bold text-white block">
+                  {profile?.worker_category || 'Mason'}
+                </span>
+                <span className="text-[10px] text-emerald-400 font-mono block">
+                  Level: {profile?.employment_level || 'Skilled'}
+                </span>
+              </div>
+
+              <div className="md:col-span-2 p-3.5 rounded-xl bg-slate-950/80 border border-slate-800 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] text-slate-400 font-medium">Portable Skill Capabilities:</span>
+                  <span className="text-[10px] text-slate-500 font-mono">
+                    {(profile?.skills || []).length} registered skills
+                  </span>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {(profile?.skills && profile.skills.length > 0) ? (
+                    profile.skills.map((skill, idx) => (
+                      <span
+                        key={idx}
+                        className="px-2.5 py-1 rounded-lg text-xs font-medium bg-slate-900 border border-cyan-500/30 text-cyan-300 flex items-center gap-1"
+                      >
+                        <span>{skill}</span>
+                      </span>
+                    ))
+                  ) : (
+                    <span className="text-xs text-slate-500 italic">
+                      No specific skills listed. Tap "Manage Skills & Trade" to declare your specialized skills.
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
           {/* Credential Wallet */}
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
@@ -546,56 +851,154 @@ export default function WorkerPortal({ currentLang = 'en' }) {
             )}
           </div>
 
-          {/* Portable Employment History */}
+          {/* Portable Employment History Ledger */}
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-800 pb-3 gap-2">
               <div className="flex items-center gap-2">
                 <Briefcase className="w-5 h-5 text-emerald-400" />
-                <h3 className="font-bold text-white text-base">Portable Employment History</h3>
+                <div>
+                  <h3 className="font-bold text-white text-base">Portable Employment History</h3>
+                  <p className="text-[11px] text-slate-400">
+                    Follows you across employers & states • Immutable workforce provenance ledger
+                  </p>
+                </div>
               </div>
-              <span className="text-xs text-slate-400">Follows you across employers & states</span>
+              
+              {/* Tab filters with counts */}
+              <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setHistoryFilter('ALL')}
+                  className={`px-2.5 py-1 rounded-lg font-medium transition ${
+                    historyFilter === 'ALL'
+                      ? 'bg-blue-600/30 text-blue-300 border border-blue-500/40'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  All ({effectiveEmployments.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setHistoryFilter('ACTIVE')}
+                  className={`px-2.5 py-1 rounded-lg font-medium transition ${
+                    historyFilter === 'ACTIVE'
+                      ? 'bg-emerald-600/30 text-emerald-300 border border-emerald-500/40'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  Active ({activeCount})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setHistoryFilter('HISTORICAL')}
+                  className={`px-2.5 py-1 rounded-lg font-medium transition ${
+                    historyFilter === 'HISTORICAL'
+                      ? 'bg-amber-600/30 text-amber-300 border border-amber-500/40'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  Past & Concluded ({historicalCount})
+                </button>
+              </div>
             </div>
 
-            {wallet?.employments && wallet.employments.length > 0 ? (
+            {/* Feature 16: Worker Employment Provenance Permanence Reassurance */}
+            {effectiveEmployments.some(e => (e.status || '').toUpperCase() === 'DISCONTINUED') && (
+              <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-300 flex items-start gap-2.5">
+                <AlertTriangle className="w-4 h-4 shrink-0 text-amber-400 mt-0.5" />
+                <div>
+                  <strong className="font-semibold text-amber-200">Worker Permanence Invariant:</strong>
+                  <p className="text-[11px] text-slate-300 mt-0.5 leading-relaxed">
+                    Discontinued or concluded stints remain permanently preserved in your portable employment ledger. Employers or administrative changes cannot delete your accrued experience and tenure history.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {filteredEmployments.length > 0 ? (
               <div className="space-y-3">
-                {wallet.employments.map((emp) => (
-                  <div
-                    key={emp.id}
-                    className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 flex items-center justify-between text-xs"
-                  >
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-white text-sm">{emp.employer_name}</span>
-                        <span className="px-2 py-0.5 rounded bg-blue-500/15 text-blue-300 font-medium">
-                          {emp.category}
-                        </span>
-                        {emp.level && (
-                          <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300 font-medium">
-                            {emp.level}
-                          </span>
-                        )}
+                {filteredEmployments.map((emp) => {
+                  const isDiscontinued = (emp.status || '').toUpperCase() === 'DISCONTINUED';
+                  const isCompleted = (emp.status || '').toUpperCase() === 'COMPLETED';
+                  return (
+                    <div
+                      key={emp.id}
+                      className={`p-4 rounded-xl bg-slate-950/80 border transition-all space-y-2.5 ${
+                        isDiscontinued
+                          ? 'border-amber-500/30 hover:border-amber-500/50'
+                          : isCompleted
+                          ? 'border-blue-500/30 hover:border-blue-500/50'
+                          : 'border-slate-800 hover:border-slate-700'
+                      }`}
+                    >
+                      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2 text-xs">
+                        <div className="space-y-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="font-bold text-white text-sm">{emp.employer_name}</span>
+                            <span className="px-2 py-0.5 rounded bg-blue-500/15 text-blue-300 font-medium text-[11px]">
+                              {emp.category}
+                            </span>
+                            <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300 font-medium text-[11px]">
+                              {emp.level || 'Skilled'}
+                            </span>
+                            <span className="px-2 py-0.5 rounded bg-slate-800/80 text-slate-400 text-[11px]">
+                              {emp.nature_of_employment || 'Contract'}
+                            </span>
+                          </div>
+                          <p className="text-slate-300 text-xs">
+                            Role: <strong className="text-white">{emp.job_role}</strong> • Location: {emp.location}
+                          </p>
+                          <p className="text-slate-400 text-[11px] flex items-center gap-1.5 font-mono">
+                            <span>Period: {formatTimestamp(emp.start_date)} → {emp.end_date && emp.end_date > 0 ? formatTimestamp(emp.end_date) : (emp.status === 'ACTIVE' ? 'Present (Active)' : 'Concluded')}</span>
+                          </p>
+                        </div>
+
+                        <div className="text-right sm:shrink-0">
+                          {renderEmploymentStatusBadge(emp.status)}
+                        </div>
                       </div>
-                      <p className="text-slate-400">
-                        Role: {emp.job_role} • Location: {emp.location} • Type: {emp.nature_of_employment || "Contract"}
-                      </p>
+
+                      {/* Contextual Invariant Banners */}
+                      {isDiscontinued && (
+                        <div className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-[11px] text-amber-300 flex items-center gap-2">
+                          <AlertTriangle className="w-4 h-4 shrink-0 text-amber-400" />
+                          <span>
+                            <strong>Permanence Invariant:</strong> Category authorization discontinued by platform governance. Historical stint permanently recorded in worker provenance ledger.
+                          </span>
+                        </div>
+                      )}
+                      {isCompleted && (
+                        <div className="p-2.5 rounded-lg bg-blue-500/10 border border-blue-500/20 text-[11px] text-blue-300 flex items-center gap-2">
+                          <CheckCircle className="w-4 h-4 shrink-0 text-blue-400" />
+                          <span>
+                            Employment tenure successfully completed and verified on-chain.
+                          </span>
+                        </div>
+                      )}
+
+                      <div className="text-[10px] text-slate-500 pt-1.5 border-t border-slate-900 flex flex-wrap items-center justify-between gap-1">
+                        <span className="font-mono">Employer Ref: {emp.employer_address?.slice(0, 16)}...</span>
+                        <span className="font-mono text-cyan-400">
+                          {emp.tx_hash ? `Tx: ${emp.tx_hash.slice(0, 16)}...` : 'On-Chain Ledger Anchor ✓'}
+                        </span>
+                      </div>
                     </div>
-                    <div className="text-right">
-                      <span className={`px-2.5 py-1 rounded-full text-[11px] font-semibold ${
-                        emp.status === 'ACTIVE'
-                          ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                          : emp.status === 'DISMISSED'
-                          ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
-                          : 'bg-slate-800 text-slate-300'
-                      }`}>
-                        {emp.status}
-                      </span>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             ) : (
-              <div className="text-center py-6 text-slate-500 text-xs">
-                No active employment records logged on-chain yet.
+              <div className="text-center py-8 text-slate-500 text-xs space-y-1">
+                <Briefcase className="w-8 h-8 mx-auto text-slate-700 mb-2" />
+                <p className="font-medium text-slate-400">
+                  {historyFilter === 'ACTIVE'
+                    ? 'No active employment stints currently running.'
+                    : historyFilter === 'HISTORICAL'
+                    ? 'No past or discontinued stints recorded yet.'
+                    : 'No employment records logged on-chain yet.'}
+                </p>
+                <p className="text-[11px] text-slate-600">
+                  When authorized employers hire or conclude stints, records appear here permanently.
+                </p>
               </div>
             )}
           </div>
@@ -803,21 +1206,85 @@ export default function WorkerPortal({ currentLang = 'en' }) {
             )}
 
             <form onSubmit={handleVerifyAadhaar} className="space-y-4 text-xs">
-              <div>
-                <label className="block text-slate-300 font-semibold mb-1">
-                  Aadhaar Number (12 Digits)
-                </label>
-                <input
-                  type="text"
-                  value={aadhaarInput}
-                  onChange={(e) => setAadhaarInput(e.target.value)}
-                  placeholder="e.g. 123456784821"
-                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-white font-mono focus:border-blue-500 outline-none"
-                  required
-                />
-                <span className="text-[11px] text-slate-500 mt-1 block">
-                  Demo Active Numbers: <code>123456784821</code>, <code>987654321012</code>
-                </span>
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="block text-slate-300 font-semibold text-xs flex items-center gap-1.5">
+                    <Shield className="w-3.5 h-3.5 text-blue-400" />
+                    Aadhaar Number (12 Digits)
+                  </label>
+                  {aadhaarInput.replace(/\s/g, '').length === 12 ? (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/15 border border-emerald-500/30 text-emerald-400">
+                      <CheckCircle2 className="w-3 h-3" /> 12/12 Digits Valid
+                    </span>
+                  ) : (
+                    <span className="text-[11px] font-mono text-slate-400">
+                      {aadhaarInput.replace(/\s/g, '').length}/12 digits
+                    </span>
+                  )}
+                </div>
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={aadhaarInput}
+                    onChange={(e) => setAadhaarInput(formatAadhaarInput(e.target.value))}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Backspace') {
+                        const { selectionStart, selectionEnd, value } = e.target;
+                        if (selectionStart === selectionEnd && selectionStart > 0 && value[selectionStart - 1] === ' ') {
+                          e.preventDefault();
+                          const cut = selectionStart - 1;
+                          const updated = value.slice(0, cut - 1) + value.slice(selectionStart);
+                          const formatted = formatAadhaarInput(updated);
+                          setAadhaarInput(formatted);
+                          setTimeout(() => {
+                            e.target.setSelectionRange(Math.max(0, cut - 1), Math.max(0, cut - 1));
+                          }, 0);
+                        }
+                      }
+                    }}
+                    onPaste={(e) => {
+                      e.preventDefault();
+                      setAadhaarInput(formatAadhaarInput(e.clipboardData.getData('text')));
+                    }}
+                    maxLength={14}
+                    placeholder="1234 5678 4821"
+                    className={`w-full px-3 py-2 pr-9 bg-slate-950 border rounded-xl font-mono text-sm tracking-wider outline-none transition ${
+                      aadhaarInput.replace(/\s/g, '').length === 12
+                        ? 'border-emerald-500/60 text-emerald-300 focus:border-emerald-400 focus:ring-1 focus:ring-emerald-400/40'
+                        : aadhaarInput.replace(/\s/g, '').length > 0
+                        ? 'border-blue-500/50 text-white focus:border-blue-400'
+                        : 'border-slate-800 text-slate-200 focus:border-blue-500'
+                    }`}
+                    required
+                  />
+                  {aadhaarInput.replace(/\s/g, '').length === 12 && (
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 absolute right-3 top-2.5 pointer-events-none" />
+                  )}
+                </div>
+                <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-slate-500 pt-0.5">
+                  <span>Demo Active Numbers:</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAadhaarInput(formatAadhaarInput('123456784821'));
+                      setNameInput('Mohammed Uzair');
+                    }}
+                    className="text-blue-400 hover:text-blue-300 hover:underline font-mono"
+                  >
+                    1234 5678 4821 (Uzair)
+                  </button>
+                  <span>•</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAadhaarInput(formatAadhaarInput('987654321012'));
+                      setNameInput('Ramesh Kumar Verma');
+                    }}
+                    className="text-blue-400 hover:text-blue-300 hover:underline font-mono"
+                  >
+                    9876 5432 1012 (Ramesh)
+                  </button>
+                </div>
               </div>
 
               <div>
@@ -951,6 +1418,179 @@ export default function WorkerPortal({ currentLang = 'en' }) {
                     </>
                   ) : (
                     <span>Save Location</span>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Manage Skills & Trade Modal */}
+      {showSkillsModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-lg w-full shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-blue-400" />
+                <h3 className="font-bold text-white text-base">Manage Skills & Trade Profile</h3>
+              </div>
+              <button
+                onClick={() => setShowSkillsModal(false)}
+                className="text-slate-400 hover:text-white text-sm"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-400 leading-relaxed">
+              Update your recognized trade profession and declare your specialized construction and technical skills. These skills will be anchored to your portable identity profile and visible to hiring employers.
+            </p>
+
+            {errorMsg && (
+              <div className="p-3 bg-rose-500/10 border border-rose-500/30 rounded-xl text-rose-400 text-xs">
+                {errorMsg}
+              </div>
+            )}
+
+            <form onSubmit={handleSaveSkillsAndTrade} className="space-y-4 text-xs">
+              {/* Trade Selection */}
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">
+                  Primary Trade / Profession <span className="text-rose-400">*</span>
+                </label>
+                <select
+                  value={modalTrade}
+                  onChange={(e) => setModalTrade(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-white font-medium focus:border-blue-500 outline-none"
+                  required
+                >
+                  {STANDARD_TRADES.map((trade) => (
+                    <option key={trade} value={trade}>{trade}</option>
+                  ))}
+                  <option value="Other">Other / Custom Trade...</option>
+                </select>
+              </div>
+
+              {/* Custom Trade Input when Other selected */}
+              {modalTrade === 'Other' && (
+                <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 space-y-1">
+                  <label className="block text-amber-300 font-semibold">
+                    Specify Custom Trade or Specialization
+                  </label>
+                  <input
+                    type="text"
+                    value={customTradeInput}
+                    onChange={(e) => setCustomTradeInput(e.target.value)}
+                    placeholder="e.g. Scaffolder, Solar Technician, Rigger"
+                    className="w-full px-3 py-2 bg-slate-950 border border-amber-500/40 rounded-xl text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-400"
+                    required
+                  />
+                </div>
+              )}
+
+              {/* Current Skills Chips with Remove button */}
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1.5">
+                  Your Skills ({modalSkills.length})
+                </label>
+                <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 min-h-[50px] flex flex-wrap gap-1.5">
+                  {modalSkills.length > 0 ? (
+                    modalSkills.map((sk, idx) => (
+                      <span
+                        key={idx}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-600/20 text-blue-300 border border-blue-500/30"
+                      >
+                        <span>{sk}</span>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveSkill(idx)}
+                          className="w-4 h-4 rounded-full hover:bg-rose-500/40 hover:text-white flex items-center justify-center text-[10px] transition ml-0.5"
+                          title={`Remove ${sk}`}
+                        >
+                          ✕
+                        </button>
+                      </span>
+                    ))
+                  ) : (
+                    <span className="text-slate-500 text-xs italic">No skills added yet. Type below or choose from suggestions.</span>
+                  )}
+                </div>
+              </div>
+
+              {/* Add Skill Field */}
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">
+                  Add a New Skill
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={newSkillInput}
+                    onChange={(e) => setNewSkillInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleAddSkill();
+                      }
+                    }}
+                    placeholder="e.g. Arc Welding, Conduit Wiring, Tiling"
+                    className="flex-1 px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-white placeholder:text-slate-600 focus:border-blue-500 outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAddSkill}
+                    className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl font-medium"
+                  >
+                    Add
+                  </button>
+                </div>
+              </div>
+
+              {/* Suggested Skills based on selected trade */}
+              {SUGGESTED_SKILLS_MAP[modalTrade] && (
+                <div className="space-y-1.5">
+                  <span className="text-[11px] text-slate-400 font-medium">Quick-Add Suggested Skills for {modalTrade}:</span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {SUGGESTED_SKILLS_MAP[modalTrade].map((s) => (
+                      <button
+                        key={s}
+                        type="button"
+                        disabled={modalSkills.includes(s)}
+                        onClick={() => handleAddSuggestedSkill(s)}
+                        className={`px-2 py-0.5 rounded-lg text-[11px] transition ${
+                          modalSkills.includes(s)
+                            ? 'bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed line-through'
+                            : 'bg-blue-600/10 hover:bg-blue-600/25 text-blue-300 border border-blue-500/20'
+                        }`}
+                      >
+                        + {s}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setShowSkillsModal(false)}
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl font-medium"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingSkills}
+                  className="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-semibold shadow-md shadow-blue-600/30 flex items-center gap-2"
+                >
+                  {savingSkills ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>Saving Profile...</span>
+                    </>
+                  ) : (
+                    <span>Save Trade & Skills</span>
                   )}
                 </button>
               </div>
