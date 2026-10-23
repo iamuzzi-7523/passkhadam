@@ -65,3 +65,6 @@ contracts/cache/
 dist/
 dist-electron/
 node_modules/
+
+# Ignore accidental Windows new files
+New Text Document.txt

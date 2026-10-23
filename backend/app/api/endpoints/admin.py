@@ -7,6 +7,9 @@ import hashlib
 import math
 from datetime import datetime, timedelta
 from typing import List, Optional, Any, Dict, Union, Tuple
+import logging
+
+logger = logging.getLogger("passkhadam.admin")
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
@@ -59,7 +62,12 @@ def _dispatch_activation_email(
 ) -> Tuple[str, Optional[str], Optional[datetime]]:
     is_mocked = hasattr(send_activation_email, "mock_calls") or hasattr(send_activation_email, "assert_called")
     domain = to_email.split("@")[-1].lower() if "@" in to_email else ""
-    is_dummy_domain = domain in ("passkhadam.org", "apexinfra.com", "example.com", "test.com", "local", "localhost", "uidai.gov.in")
+    is_dummy_domain = (
+        domain in ("passkhadam.org", "apexinfra.com", "example.com", "test.com", "local", "localhost", "uidai.gov.in", "labour.gov.in")
+        or domain.endswith(".test")
+        or domain.endswith(".local")
+        or domain.endswith(".gov.in")
+    )
 
     if is_smtp_configured():
         if is_dummy_domain and not is_mocked:
@@ -497,7 +505,7 @@ def review_organization(
             db.query(DBActivationEmail).filter(
                 DBActivationEmail.entity_type == "EMPLOYER",
                 DBActivationEmail.entity_id == org.id,
-                DBActivationEmail.status.in_(["PENDING", "SENT"])
+                DBActivationEmail.status.in_(["PENDING", "SENT", "FAILED"])
             ).update({"status": "SUPERSEDED"})
 
             base_url = getattr(settings, "PUBLIC_APP_BASE_URL", "http://127.0.0.1:5173").rstrip("/")
@@ -633,7 +641,7 @@ def resend_employer_activation(
     db.query(DBActivationEmail).filter(
         DBActivationEmail.entity_type == "EMPLOYER",
         DBActivationEmail.entity_id == org.id,
-        DBActivationEmail.status.in_(["PENDING", "SENT"])
+        DBActivationEmail.status.in_(["PENDING", "SENT", "FAILED"])
     ).update({"status": "SUPERSEDED"})
 
     # Count previous attempts
@@ -1235,7 +1243,7 @@ def provision_government_officer(
             DBActivationEmail.entity_id == officer.id,
             DBActivationEmail.recipient_email == clean_email
         ),
-        DBActivationEmail.status.in_(["PENDING", "SENT"])
+        DBActivationEmail.status.in_(["PENDING", "SENT", "FAILED"])
     ).update({"status": "SUPERSEDED"}, synchronize_session=False)
 
     # 3. Issue single-use SHA-256 hashed activation token in DBActivationEmail
@@ -1652,7 +1660,7 @@ def resend_officer_activation(
         DBActivationEmail.entity_type == "GOVERNMENT",
         DBActivationEmail.entity_id == off.id,
         DBActivationEmail.recipient_email == off.official_email,
-        DBActivationEmail.status.in_(["PENDING", "SENT"])
+        DBActivationEmail.status.in_(["PENDING", "SENT", "FAILED"])
     ).update({"status": "SUPERSEDED"})
 
     prev_count = db.query(DBActivationEmail).filter(

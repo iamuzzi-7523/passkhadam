@@ -131,6 +131,60 @@ def send_resend_email(
         logger.error(err)
         return False, err
 
+def send_brevo_email(
+    to_email: str,
+    subject: str,
+    html_content: str,
+    text_content: Optional[str] = None,
+    correlation_id: Optional[str] = None
+) -> Tuple[bool, Optional[str]]:
+    """
+    Dispatches transactional email over HTTPS Port 443 using the Brevo (Sendinblue) REST API.
+    Bypasses cloud provider SMTP egress blocking (Render ports 25, 465, 587) and delivers
+    to ANY recipient without requiring custom domain DNS verification.
+    """
+    api_key = os.getenv("BREVO_API_KEY") or getattr(settings, "BREVO_API_KEY", None)
+    from_email = os.getenv("EMAILS_FROM_EMAIL") or getattr(settings, "EMAILS_FROM_EMAIL", None) or "passkhadam@gmail.com"
+    corr_id = correlation_id or f"corr_{secrets.token_hex(8)}"
+
+    if not api_key:
+        return False, "BREVO_API_KEY not configured"
+
+    payload = {
+        "sender": {"name": "PASSKHADAM Governance", "email": from_email.strip()},
+        "to": [{"email": to_email.strip()}],
+        "subject": subject,
+        "htmlContent": html_content
+    }
+    if text_content:
+        payload["textContent"] = text_content
+
+    try:
+        import httpx
+        with httpx.Client(timeout=10.0) as client:
+            resp = client.post(
+                "https://api.brevo.com/v3/smtp/email",
+                headers={
+                    "api-key": api_key.strip(),
+                    "Content-Type": "application/json",
+                    "Accept": "application/json"
+                },
+                json=payload
+            )
+            if resp.status_code in [200, 201]:
+                res_data = resp.json()
+                msg_id = res_data.get("messageId")
+                logger.info(f"Email successfully accepted by Brevo HTTPS API (messageId={msg_id}, correlation_id={corr_id})")
+                return True, None
+            else:
+                err = f"Brevo API error HTTP {resp.status_code}: {resp.text} (correlation_id={corr_id})"
+                logger.error(err)
+                return False, err
+    except Exception as exc:
+        err = f"Brevo API network error: {type(exc).__name__} (correlation_id={corr_id})"
+        logger.error(err)
+        return False, err
+
 def get_mailer_config() -> dict:
     """
     Retrieves SMTP configuration from environment or settings.
@@ -170,11 +224,12 @@ def get_mailer_config() -> dict:
 
 def is_smtp_configured() -> bool:
     """
-    Returns True if SMTP_HOST or RESEND_API_KEY is configured.
+    Returns True if SMTP_HOST, BREVO_API_KEY, or RESEND_API_KEY is configured.
     """
     cfg = get_mailer_config()
+    brevo_key = os.getenv("BREVO_API_KEY") or getattr(settings, "BREVO_API_KEY", None)
     resend_key = os.getenv("RESEND_API_KEY") or getattr(settings, "RESEND_API_KEY", None)
-    return bool(cfg["host"] or (resend_key and str(resend_key).strip()))
+    return bool(cfg["host"] or (brevo_key and str(brevo_key).strip()) or (resend_key and str(resend_key).strip()))
 
 def build_otp_email_message(
     to_email: str,
@@ -334,6 +389,33 @@ def send_otp_email(
         err = "Email subject contains invalid newline characters."
         logger.warning(err)
         return False, err
+
+    # 1. Prefer HTTPS Brevo API over port 443 (Bypasses Render cloud SMTP port blocking)
+    brevo_key = os.getenv("BREVO_API_KEY") or getattr(settings, "BREVO_API_KEY", None)
+    if brevo_key:
+        msg = build_otp_email_message(
+            to_email=to_email,
+            otp_code=otp_code,
+            subject=subject
+        )
+        html_payload = ""
+        text_payload = ""
+        for part in msg.get_payload():
+            if part.get_content_type() == "text/html":
+                html_payload = part.get_payload()
+            elif part.get_content_type() == "text/plain":
+                text_payload = part.get_payload()
+
+        subj = subject or "PASSKHADAM Email Verification Code"
+        brevo_sent, brevo_err = send_brevo_email(
+            to_email=to_email,
+            subject=subj,
+            html_content=html_payload,
+            text_content=text_payload
+        )
+        if brevo_sent:
+            return True, None
+        logger.warning(f"Brevo API OTP dispatch failed ({brevo_err}). Falling back to SMTP transport...")
 
     if not host:
         err = "SMTP host is not configured."
@@ -659,7 +741,39 @@ def send_activation_email(
         logger.error(f"Security Alert: Blocked dispatch with untrusted activation URL structure (correlation_id={correlation_id}, error_code=INVALID_ACTIVATION_URL)")
         return False, "Invalid activation URL structure"
 
-    # 1. Prefer HTTPS Resend API over port 443 (Active in cloud mode or when RESEND_API_KEY is configured)
+    # 1. Prefer HTTPS Brevo API over port 443 (Permits @gmail.com sender to any recipient, bypasses cloud port blocks)
+    brevo_key = os.getenv("BREVO_API_KEY") or getattr(settings, "BREVO_API_KEY", None)
+    if brevo_key:
+        msg = build_activation_email_message(
+            to_email=to_email,
+            activation_link=activation_link,
+            entity_type=entity_type,
+            custom_message=custom_message,
+            subject=subject,
+            raw_token=raw_token,
+            details=details
+        )
+        html_payload = ""
+        text_payload = ""
+        for part in msg.get_payload():
+            if part.get_content_type() == "text/html":
+                html_payload = part.get_payload()
+            elif part.get_content_type() == "text/plain":
+                text_payload = part.get_payload()
+
+        subj = subject or f"PASSKHADAM - Activate Your {str(entity_type).capitalize()} Account"
+        brevo_sent, brevo_err = send_brevo_email(
+            to_email=to_email,
+            subject=subj,
+            html_content=html_payload,
+            text_content=text_payload,
+            correlation_id=correlation_id
+        )
+        if brevo_sent:
+            return True, None
+        logger.warning(f"Brevo API dispatch failed ({brevo_err}). Falling back...")
+
+    # 2. Prefer HTTPS Resend API over port 443 (Active in cloud mode or when RESEND_API_KEY is configured)
     resend_key = os.getenv("RESEND_API_KEY") or getattr(settings, "RESEND_API_KEY", None)
     if resend_key:
         msg = build_activation_email_message(

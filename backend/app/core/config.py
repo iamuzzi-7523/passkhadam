@@ -80,6 +80,7 @@ class Settings(BaseSettings):
     # Environment & Cloud Integration
     ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
     RESEND_API_KEY: Optional[str] = os.getenv("RESEND_API_KEY", None)
+    BREVO_API_KEY: Optional[str] = os.getenv("BREVO_API_KEY", None)
     ALLOWED_ORIGINS: Optional[str] = os.getenv("ALLOWED_ORIGINS", None)
 
     # Storage & Authoritative Database URL
