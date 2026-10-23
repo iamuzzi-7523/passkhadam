@@ -341,6 +341,19 @@ def on_startup():
         except Exception as e:
             logger.warning(f"IPFS blobs database synchronization error: {e}")
 
+        # Self-healing integrity sync for all anchored worker profiles
+        try:
+            from app.api.endpoints.worker import _ensure_worker_ipfs_credential
+            anchored_profiles = db.query(DBWorkerProfile).filter(
+                DBWorkerProfile.did.isnot(None),
+                DBWorkerProfile.is_credential_anchored == True
+            ).all()
+            for ap in anchored_profiles:
+                _ensure_worker_ipfs_credential(ap, db)
+            logger.info(f"Verified and synchronized integrity for {len(anchored_profiles)} anchored worker profiles")
+        except Exception as e:
+            logger.warning(f"Integrity self-healing error during startup: {e}")
+
     finally:
         db.close()
 

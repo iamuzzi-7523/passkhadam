@@ -346,7 +346,7 @@ class BlockchainService:
                     record = {
                         "did": onchain_tuple[0],
                         "credential_hash": cached.get("credential_hash") or cred_h_str,
-                        "ipfs_cid": onchain_tuple[2],
+                        "ipfs_cid": cached.get("ipfs_cid") or onchain_tuple[2],
                         "issue_timestamp": onchain_tuple[3],
                         "updated_at": onchain_tuple[4],
                         "is_registered": onchain_tuple[5],
