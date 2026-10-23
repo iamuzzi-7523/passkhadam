@@ -32,7 +32,11 @@ from app.services.blockchain_service import blockchain_service
 from app.services.verification_engine import verification_engine
 from app.services.aadhaar_service import aadhaar_authority
 
-RAW_AADHAAR_REGEX = re.compile(r"\b\d{12}\b|\b\d{4}\s\d{4}\s\d{4}\b")
+RAW_AADHAAR_REGEX = re.compile(
+    r"(?<![0-9a-zA-Z\-])(?<!-[0-9a-fA-F]{4}-)(?<!worker:)(?<!did:)"
+    r"([2-9]\d{11}|[2-9]\d{3}[\s-]\d{4}[\s-]\d{4})"
+    r"(?![0-9a-zA-Z\-])"
+)
 
 
 @pytest.fixture

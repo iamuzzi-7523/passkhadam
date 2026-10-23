@@ -463,20 +463,25 @@ class TestMockAadhaarUrlPrivacyBoundary:
 
     def test_list_records_and_logs_never_leak_raw_aadhaar(self, client):
         """Verifies GET /api/v1/aadhaar/records and GET /api/v1/aadhaar/logs contain zero 12-digit plaintext numbers."""
+        # Robust regex immune to UUID4 nodes (-[0-9a-f]{4}-), DIDs (worker:, did:), and hex tokens
+        raw_aadhaar_pattern = re.compile(
+            r"(?<![0-9a-zA-Z\-])(?<!-[0-9a-fA-F]{4}-)(?<!worker:)(?<!did:)"
+            r"([2-9]\d{11}|[2-9]\d{3}[\s-]\d{4}[\s-]\d{4})"
+            r"(?![0-9a-zA-Z\-])"
+        )
+
         res_records = client.get("/api/v1/aadhaar/records?limit=100")
         assert res_records.status_code == 200
         records = res_records.json()
         for r in records:
-            # Must not contain plaintext aadhaar_number field
             assert "aadhaar_number" not in r or r.get("aadhaar_number") is None
-            # Masked Aadhaar must contain 'X'
             if "masked_aadhaar" in r and r["masked_aadhaar"]:
                 assert "X" in r["masked_aadhaar"]
-            # Ensure masked_aadhaar itself is never a raw 12-digit number
             assert not re.match(r"^\d{12}$", str(r.get("masked_aadhaar", "")))
-            for field in ["full_name", "origin_state", "address", "masked_aadhaar"]:
-                val = str(r.get(field, ""))
-                assert not re.search(r"\b[2-9]\d{11}\b", val), f"Plaintext Aadhaar leaked in record field {field}: {val}"
+            # Exhaustively scan all string fields for raw Aadhaar leaks
+            for k, val in r.items():
+                if isinstance(val, str):
+                    assert not raw_aadhaar_pattern.search(val), f"Plaintext Aadhaar leaked in record field '{k}': {val}"
 
         res_logs = client.get("/api/v1/aadhaar/logs?limit=100")
         assert res_logs.status_code == 200
@@ -486,9 +491,10 @@ class TestMockAadhaarUrlPrivacyBoundary:
             if "masked_aadhaar" in l and l["masked_aadhaar"]:
                 assert "X" in l["masked_aadhaar"]
             assert not re.match(r"^\d{12}$", str(l.get("masked_aadhaar", "")))
-            for field in ["details", "description", "action", "masked_aadhaar"]:
-                val = str(l.get(field, ""))
-                assert not re.search(r"\b[2-9]\d{11}\b", val), f"Plaintext Aadhaar leaked in log field {field}: {val}"
+            # Exhaustively scan all string fields for raw Aadhaar leaks
+            for k, val in l.items():
+                if isinstance(val, str):
+                    assert not raw_aadhaar_pattern.search(val), f"Plaintext Aadhaar leaked in log field '{k}': {val}"
 
 
 # ============================================================================
@@ -569,9 +575,15 @@ class TestVerificationStepperAlignment:
             assert step_name in src, f"Step {step_num} name '{step_name}' missing from verification_engine.py"
 
     def test_frontend_verification_stepper_jsx_contains_all_11_stages(self):
-        stepper_path = Path(__file__).resolve().parents[2] / "frontend" / "src" / "components" / "common" / "VerificationStepper.jsx"
+        # Dynamically resolve path to frontend component relative to test file anchor
+        repo_root = Path(__file__).resolve().parents[2]
+        stepper_path = repo_root / "frontend" / "src" / "components" / "common" / "VerificationStepper.jsx"
         if not stepper_path.exists():
-            stepper_path = Path("e:/AI/projects/PassKhadam/PassKhadam_Exportable/frontend/src/components/common/VerificationStepper.jsx")
+            # Robust fallback relative to current working directory
+            fallback = Path("frontend/src/components/common/VerificationStepper.jsx").resolve()
+            if fallback.exists():
+                stepper_path = fallback
+        assert stepper_path.exists(), f"VerificationStepper.jsx not found at resolved path: {stepper_path}"
         with open(stepper_path, "r", encoding="utf-8") as f:
             content = f.read()
 

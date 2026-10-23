@@ -61,7 +61,11 @@ from app.core.auth import create_test_firebase_jwt
 
 client = TestClient(app)
 
-RAW_AADHAAR_REGEX = re.compile(r"\b\d{12}\b|\b\d{4}\s\d{4}\s\d{4}\b")
+RAW_AADHAAR_REGEX = re.compile(
+    r"(?<![0-9a-zA-Z\-])(?<!-[0-9a-fA-F]{4}-)(?<!worker:)(?<!did:)"
+    r"([2-9]\d{11}|[2-9]\d{3}[\s-]\d{4}[\s-]\d{4})"
+    r"(?![0-9a-zA-Z\-])"
+)
 ISO_8601_REGEX = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
 
 
