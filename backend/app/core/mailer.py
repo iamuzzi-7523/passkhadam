@@ -93,8 +93,13 @@ def send_resend_email(
         logger.error(err)
         return False, err
 
+    clean_from = from_email.strip()
+    # Resend restricts unverified sender domains. If from_email is a Gmail/Yahoo/Outlook address, fallback to onboarding@resend.dev
+    if any(clean_from.lower().endswith(d) for d in ("@gmail.com", "@yahoo.com", "@outlook.com", "@hotmail.com")):
+        clean_from = "onboarding@resend.dev"
+
     payload = {
-        "from": f"PASSKHADAM Governance <{from_email}>",
+        "from": f"PASSKHADAM Governance <{clean_from}>",
         "to": [to_email],
         "subject": subject,
         "html": html_content
@@ -165,10 +170,11 @@ def get_mailer_config() -> dict:
 
 def is_smtp_configured() -> bool:
     """
-    Returns True if SMTP_HOST is configured.
+    Returns True if SMTP_HOST or RESEND_API_KEY is configured.
     """
     cfg = get_mailer_config()
-    return bool(cfg["host"])
+    resend_key = os.getenv("RESEND_API_KEY") or getattr(settings, "RESEND_API_KEY", None)
+    return bool(cfg["host"] or (resend_key and str(resend_key).strip()))
 
 def build_otp_email_message(
     to_email: str,
@@ -674,13 +680,16 @@ def send_activation_email(
                 text_payload = part.get_payload()
 
         subj = subject or f"PASSKHADAM - Activate Your {str(entity_type).capitalize()} Account"
-        return send_resend_email(
+        resend_sent, resend_err = send_resend_email(
             to_email=to_email,
             subject=subj,
             html_content=html_payload,
             text_content=text_payload,
             correlation_id=correlation_id
         )
+        if resend_sent:
+            return True, None
+        logger.warning(f"Resend API dispatch failed ({resend_err}). Falling back to SMTP transport...")
 
     # 2. Fallback to SMTP if configured
     cfg = get_mailer_config()
@@ -692,8 +701,6 @@ def send_activation_email(
 
     if not host:
         err = "Neither RESEND_API_KEY nor SMTP host is configured."
-        logger.warning(err)
-        return False, err
         logger.warning(err)
         return False, err
 
