@@ -457,7 +457,7 @@ class AadhaarRecordResponse(BaseModel):
     gender: str
     origin_state: str
     address: Optional[str] = None
-    status: str
+    status: Optional[str] = 'ACTIVE'
     is_active: bool
     created_at: datetime
     updated_at: Optional[datetime] = None

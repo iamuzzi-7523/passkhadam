@@ -933,8 +933,13 @@ class BlockchainService:
                 db.commit()
                 db.refresh(db_emp)
                 record["id"] = db_emp.id
-                if emp_id != db_emp.id and emp_id in self.employments:
-                    del self.employments[emp_id]
+                if emp_id != db_emp.id:
+                    if emp_id in self.employments:
+                        del self.employments[emp_id]
+                    if emp_id in self.employment_events:
+                        self.employment_events[db_emp.id] = self.employment_events.pop(emp_id)
+                if db_emp.id not in self.employment_events:
+                    self.employment_events[db_emp.id] = []
                 self.employments[db_emp.id] = record
             finally:
                 db.close()
@@ -959,6 +964,8 @@ class BlockchainService:
             self.employments[emp_id]["end_date"] = int(time.time())
 
         # Append to immutable event history (preserves audit trail)
+        if emp_id not in self.employment_events:
+            self.employment_events[emp_id] = []
         self.employment_events[emp_id].append({
             "status": new_status,
             "reason": reason,
