@@ -1,164 +1,177 @@
-# PASSKHADAM — Portable Standalone Distribution
+# PassKadam: Decentralized Identity Verification & Benefit Portability for Migrant Workers
 
-> **Decentralized Identity Verification Platform for Migrant Workers**  
-> *Production-Oriented Architecture (v0.3 / v0.4 / v0.5 Baseline)*
+[![UN SDG 8](https://img.shields.io/badge/SDG%208-Decent%20Work%20%26%20Economic%20Growth-darkorange?style=flat-square)](https://sdgs.un.org/goals/goal8)
+[![UN SDG 10](https://img.shields.io/badge/SDG%2010-Reduced%20Inequalities-crimson?style=flat-square)](https://sdgs.un.org/goals/goal10)
+[![Solidity](https://img.shields.io/badge/Solidity-0.8.24-lightgrey?logo=solidity&style=flat-square)](https://soliditylang.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-1.0.0-009688?logo=fastapi&style=flat-square)](https://fastapi.tiangolo.com/)
+[![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&style=flat-square)](https://react.dev/)
+[![IPFS](https://img.shields.io/badge/IPFS-Decentralized%20Storage-65C2CB?logo=ipfs&style=flat-square)](https://ipfs.tech/)
 
-This folder is the **lightweight, exportable distribution** of the PASSKHADAM platform (~6 MB instead of the full 700 MB development tree). It contains all source code, pre-compiled smart contract artifacts, test suites, and a clean seed database ready to be transferred to and run independently on any computer.
-
----
-
-## 📦 What's Inside This Portable Package?
-
-- **`backend/`**: Complete FastAPI verification engine, REST API endpoints, cryptographic services (AES-256-GCM, Ed25519, Keccak-256), IPFS multihash abstraction, and SQLite database models.
-- **`frontend/`**: Complete React 18 + Vite + Tailwind CSS portals for all 5 roles (Worker, Employer, Government, Platform Admin, and Mock Aadhaar Authority) + pre-built `dist/` bundle.
-- **`contracts/`**: Complete EVM Solidity 0.8.20 smart contracts (`WorkerIdentityRegistry`, `CredentialRegistry`, `OrganizationRegistry`, `EmploymentRegistry`, `WelfareSchemeRegistry`), Hardhat test suites, and deployment scripts.
-- **`passkhadam.db`**: Pre-seeded SQLite database containing clean demo accounts for all 5 roles.
-- **Launchers & Setup**: 1-click batch and shell scripts for Windows, Linux, and macOS.
-
-*(The 650+ MB `node_modules` folders, bytecode caches, and temporary stress-test databases have been excluded for clean, fast portability across machines).*
+> **Final Year B.Tech Capstone Project**  
+> A Self-Sovereign Identity (SSI) and Cross-State Welfare Portability Platform ensuring interstate migrant workers never lose access to their fundamental social security entitlements.
 
 ---
 
-## ⚡ Quick Start
+## 📌 1. Problem Statement & Motivation
 
-### 1. Prerequisites
-Before running, make sure your target system has:
-- **Python 3.10+** (check with `python --version`)
-- **Node.js 18+** & **npm** (check with `node --version` and `npm --version`)
+In India, over **100+ million interstate migrant workers** move between states (e.g., from Bihar, Uttar Pradesh, Odisha, or West Bengal to destination states like Kerala, Maharashtra, Delhi, or Karnataka). Upon crossing state borders, they encounter severe administrative exclusion:
 
----
+- **Siloed State Databases**: Welfare benefits (such as **PDS Ration Quotas**, **State BOCW Construction Funds**, and **Ayushman Emergency Health Services**) are bound to home state servers.
+- **Verification Bottlenecks**: Destination state officers cannot verify cross-state entitlement cards without slow inter-state bureaucratic clearances.
+- **Document Confiscation & Vulnerability**: Rogue contractors and intermediaries frequently confiscate physical identity documents, exposing workers to wage theft, unsafe working conditions, and exploitation.
 
-### 2. One-Click Setup (First Time Only)
-
-Run the setup script to install dependencies for both Python and Node.js:
-
-- **Windows**:
-  Double-click **`setup.bat`** (or open terminal and run `.\setup.bat`)
-
-- **Linux / macOS**:
-  ```bash
-  chmod +x setup.sh start_dev.sh
-  ./setup.sh
-  ```
+### The PassKadam Solution
+**PassKadam** decouples identity verification from centralized databases by implementing a **Decentralized Self-Sovereign Identity (SSI)** architecture:
+1. Origin states and national authorities issue cryptographically signed **W3C Verifiable Credentials (VC)**.
+2. Demographic details are encrypted using **AES-256** and pinned to **IPFS**—ensuring **0 bytes of cleartext PII touch the public blockchain**.
+3. Cryptographic integrity hashes and revocation statuses are anchored on **Ethereum / Solidity Smart Contracts**.
+4. Any destination state officer or employer can verify identity and disburse portable entitlements in **under 2 seconds** via a QR code presentation, with the smart contract automatically preventing double-spending and duplicate cross-state claims.
 
 ---
 
-### 3. Launching PASSKHADAM
+## 🎯 2. UN Sustainable Development Goals (SDG) Mapping
 
-Start both the FastAPI backend and Vite frontend with a single command:
-
-- **Windows**:
-  Double-click **`start_dev.bat`** (or run `.\start_dev.ps1` in PowerShell)
-
-- **Linux / macOS**:
-  ```bash
-  ./start_dev.sh
-  ```
-
-Once started:
-- 🌐 **Web Application**: [http://127.0.0.1:5173](http://127.0.0.1:5173)
-- 📖 **Interactive API Docs (Swagger)**: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
+| SDG Target | United Nations Goal Description | PassKadam Technological Impact |
+| :--- | :--- | :--- |
+| **SDG 8 (Target 8.8)** | *Protect labour rights and promote safe and secure working environments for all workers, including migrant workers.* | **Zero-Document Exploitation**: Eliminates the practice of contractors withholding physical papers. Employers verify verified trade skills and safety ratings without holding physical Aadhaar/voter IDs. |
+| **SDG 10 (Target 10.7)** | *Facilitate orderly, safe, regular and responsible migration and mobility of people.* | **One Nation Welfare Portability**: Guarantees equal and non-discriminatory access to food security, transit housing allowances, and emergency healthcare anywhere in India. |
 
 ---
 
-## 🔑 Pre-Seeded Demonstration Accounts
+## 🏗️ 3. System Architecture
 
-All 5 core roles are pre-seeded in the database and ready for immediate login:
-
-| Role | Email | Password | Description |
-| :--- | :--- | :--- | :--- |
-| **Worker** | `worker@passkhadam.org` | `passkhadam123` | View digital card, QR presentation, trade profile & stints |
-| **Employer** | `employer@apexinfra.com` | `passkhadam123` | Apex Infrastructure Admin: QR upload, contracts & stints |
-| **Government** | `gov@maharashtra.gov.in` | `passkhadam123` | Maharashtra Labour Welfare Officer: Cross-state KYC & claims |
-| **Admin** | `admin@passkhadam.org` | `passkhadam123` | Platform Governance: Approve employers & category scopes |
-| **Aadhaar** | `authority@uidai.gov.in` | `passkhadam123` | Mock UIDAI Gateway & sandbox audit logs |
-
----
-
-## 🧪 Running Verification & Tests
-
-To verify that all cryptographic invariants and platform logic are functioning properly:
-
-### Backend Cryptographic & Invariant Tests
-```bash
-python -m pytest backend/tests/test_backend.py -v
 ```
-*(Tests Aadhaar verification, AES-256-GCM vault encryption, Ed25519 signatures, QR tampering detection, credential replay prevention, and welfare claim cooldowns).*
+                                 [ MIGRANT WORKER ]
+                                         │
+                   1. Enrolls via Mock Aadhaar KYC & OTP Verification
+                                         ▼
+                                 [ FASTAPI BACKEND ]
+                    (EIP-712 Credential Signer & Cryptographic Engine)
+                         │                                 │
+   2. AES-256 Encrypt & Pin                   3. Anchor DID Hash & Integrity Hash
+                         ▼                                 ▼
+                 [ IPFS NETWORK ]                [ SOLIDITY SMART CONTRACTS ]
+            (Encrypted Credential JSON)             (Identity & Welfare Registry)
+                         │                                 │
+                         └─────────────────┬───────────────┘
+                                           │
+                   4. Generates Portable QR Presentation (PassKadam)
+                                           │
+                  ┌────────────────────────┴────────────────────────┐
+                  ▼                                                 ▼
+     [ DESTINATION WELFARE OFFICER ]                      [ REGISTERED EMPLOYER ]
+       - Scans QR Code                                      - Scans QR Code
+       - Decrypts Off-Chain IPFS VC                         - Verifies Certified Trade Skills
+       - On-Chain Eligibility Check                         - Confirms Safety Certifications
+       - Disburses Portable Rations / Benefits              - Logs Verified Employment Stint
+       - Prevents Duplicate Cross-State Claims              - Zero PII Document Confiscation
+```
 
-### Smart Contract Hardhat Tests (Optional)
+---
+
+## 👥 4. Team Contribution Matrix (40% - 30% - 30%)
+
+| Team Member | Role & Focus Area | Target Contribution | Module Responsibility |
+| :--- | :--- | :---: | :--- |
+| **Mohammed Uzair**<br>([@iamuzzi-7523](https://github.com/iamuzzi-7523)) | **Lead & Blockchain Architect** | **~40%** | Solidity smart contracts (`AccessManager.sol`, `WorkerIdentityRegistry.sol`, `WelfareSchemeRegistry.sol`), Hardhat test suites, EVM deployment scripts, anti-duplicate claim logic. |
+| **Mohammed Adnan**<br>([@Mohammed-Adnan7](https://github.com/Mohammed-Adnan7)) | **Backend & Cryptography Engineer** | **~30%** | FastAPI backend, Mock Aadhaar KYC verification & OTP engine, AES-256 IPFS encryption pipeline, W3C Verifiable Credential ECDSA signing. |
+| **Muhammed Muthahar K M**<br>([@MUTHAHAR2003](https://github.com/MUTHAHAR2003)) | **Frontend & UI/UX Developer** | **~30%** | React 19 + Vite frontend, Worker DID Digital Card, QR generator/scanner, State Welfare Officer portal, Employer zero-PII dashboard, SDG analytics. |
+
+---
+
+## 💻 5. Technology Stack Breakdown
+
+- **Blockchain Layer**: Solidity `0.8.24`, Hardhat, OpenZeppelin Contracts v5.
+- **Decentralized Storage**: IPFS (Content Addressing CID with AES-256-Fernet encryption).
+- **Backend & Middleware**: Python 3.13, FastAPI, Web3.py, `eth-account` (EIP-712 / ECDSA), Pytest.
+- **Frontend Application**: React 19, Vite, Tailwind CSS, Lucide React, `qrcode.react`, Ethers.js.
+- **Mock KYC**: UIDAI Aadhaar verification & OTP simulation with pre-seeded migrant demographics.
+
+---
+
+## 🚀 6. Quick Start & Execution Guide
+
+### Prerequisites
+- **Node.js**: v18+ (tested on v22.19.0)
+- **Python**: 3.10+ (tested on 3.13.11)
+- **Git**
+
+### Step 1: Clone Repository
+```bash
+git clone https://github.com/iamuzzi-7523/passkhadam.git
+cd passkhadam
+```
+
+### Step 2: Compile & Test Smart Contracts
 ```bash
 cd contracts
+npm install
+npx hardhat compile
 npx hardhat test
 ```
-*(Runs unit tests against all 5 smart contracts in the local EVM environment).*
+*All 48 unit tests verify access control, worker anchoring, revocation, and anti-duplicate cooldowns.*
 
----
-
-## 🛠 Manual Setup Commands (Alternative)
-
-If you prefer installing dependencies manually step-by-step:
-
-### 1. Backend
+### Step 3: Start FastAPI Backend
+Open a new terminal:
 ```bash
 cd backend
-python -m pip install -r requirements.txt
-python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+pip install -r requirements.txt
+# Run automated backend tests
+python -m pytest tests/test_backend.py -v
+# Launch FastAPI server (port 8000)
+python -m uvicorn app.main:app --reload --port 8000
 ```
+*API interactive documentation available at `http://localhost:8000/docs`.*
 
-### 2. Frontend
+### Step 4: Start React Frontend
+Open a new terminal:
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
-
-### 3. Smart Contracts (Optional)
-```bash
-cd contracts
-npm install
-```
+*Open `http://localhost:5173` in your browser.*
 
 ---
 
-## 📂 Exported Directory Structure
+## 🧪 7. Demonstration Walkthrough (Viva Voce Flow)
 
-```
-PassKhadam_Exportable/
-├── backend/
-│   ├── app/
-│   │   ├── api/endpoints/         # 5 Role API routers (Worker, Employer, Gov, Admin, Aadhaar)
-│   │   ├── blockchain/            # deployed_contracts.json (Contract ABIs & deterministic addresses)
-│   │   ├── core/                  # AES-256-GCM, Ed25519, Keccak-256 crypto & settings
-│   │   ├── db/                    # SQLite database migration tools
-│   │   ├── models/                # SQLAlchemy models & Pydantic schemas
-│   │   ├── services/              # 10-Step Verification Engine, QR, IPFS, Blockchain services
-│   │   ├── storage/               # Seeded passkhadam.db & ipfs_blobs directory
-│   │   └── main.py                # FastAPI application entrypoint & auto-seeder
-│   ├── scripts/                   # Integration & seed scripts
-│   ├── tests/                     # 100% passing Pytest regression test suite
-│   ├── requirements.txt           # Python backend dependencies
-│   └── .env                       # Backend configuration (SMTP, secret keys, IPFS)
-│
-├── frontend/
-│   ├── src/                       # React 18 source (portals, components, contexts, hooks)
-│   ├── dist/                      # Pre-built production bundle
-│   ├── package.json               # Frontend dependencies (React, Vite, Lucide, Tailwind)
-│   ├── vite.config.js             # Vite development server configuration
-│   └── .env                       # Frontend environment configuration (Firebase, API URL)
-│
-├── contracts/
-│   ├── contracts/                 # Solidity 0.8.20 smart contracts
-│   ├── artifacts/                 # Precompiled Hardhat contract artifacts & ABIs
-│   ├── scripts/                   # Deploy and artifact export scripts
-│   ├── test/                      # Hardhat contract test suites
-│   ├── hardhat.config.js          # Hardhat configuration (ChainID 1337)
-│   └── package.json               # Hardhat dependencies
-│
-├── passkhadam.db                  # Clean standalone 155KB SQLite seed database
-├── start_dev.bat                  # 1-Click Windows Dev Launcher
-├── start_dev.ps1                  # PowerShell Dev Launcher
-├── start_dev.sh                   # 1-Click Linux / macOS Dev Launcher
-├── setup.bat                      # 1-Click Windows Dependency Installer
-├── setup.sh                       # 1-Click Linux / macOS Dependency Installer
-└── README.md                      # This Quickstart Guide
-```
+1. **Worker Onboarding**:
+   - Open the **Worker Wallet** tab.
+   - Select demo worker *Rameshwar Kumar* (Bihar) or enter custom 12-digit Aadhaar.
+   - Click **Request Mock Aadhaar OTP** (test OTP `752310` auto-fills).
+   - Click **Verify & Anchor Credential**.
+   - The system generates an **ECDSA-signed W3C Verifiable Credential**, encrypts it on **IPFS**, and anchors the DID hash on the **Ethereum blockchain**.
+   - The **PassKadam Digital Worker Card** appears with photo, QR code, and portable entitlements.
+
+2. **Cross-State Inspection & Disbursement**:
+   - Click **Simulate Inspection in Destination State (Officer View)**.
+   - Switch destination state to **Kerala**.
+   - Click **Verify Worker Credential**.
+   - Verification confirms: *Cryptographic Proof Verified & Active on Blockchain*.
+   - In the **Benefit Portability** panel, select *One Nation One Ration Card (PDS)* and click **Disburse Benefit in Kerala**.
+   - Transaction is confirmed with on-chain Claim ID!
+   - *Duplicate Claim Test*: Click **Disburse Benefit** again. The smart contract immediately blocks the claim with an alert: *"Duplicate claim prevented! Cooldown active"*.
+
+3. **Employer Zero-Document Verification**:
+   - Switch to the **Employer Portal** tab.
+   - Paste the worker's QR payload and click **Verify Worker Credentials**.
+   - View verified trade skills and safety ratings with **zero raw Aadhaar or physical documents retained**.
+   - Log an active employment engagement.
+
+4. **SDG Impact Dashboard**:
+   - Switch to **SDG 8 & 10 Impact** to present live metrics and answer external viva examination questions.
+
+---
+
+## ⚖️ 8. Security & Privacy Guarantees
+
+- **No Cleartext PII on Blockchain**: Complies with the Indian **Digital Personal Data Protection (DPDP) Act 2023** and **GDPR**.
+- **Cryptographic Non-Repudiation**: Credential subjects are signed using `secp256k1` ECDSA keys belonging to authorized state labour departments.
+- **Anti-Double Dipping**: Smart contract cooldown algorithms prevent dishonest multi-state benefit redemption without centralized cross-state sync.
+
+---
+
+## 📜 9. License
+
+This project is licensed under the MIT License.

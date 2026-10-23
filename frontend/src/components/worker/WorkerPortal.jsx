@@ -472,37 +472,70 @@ export default function WorkerPortal({ currentLang = 'en' }) {
             </div>
 
             {profile?.is_credential_anchored ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {wallet?.credentials.map((cred, i) => (
-                  <div
-                    key={i}
-                    className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 hover:border-slate-700 transition-all space-y-2"
-                  >
-                    <div className="flex items-start justify-between">
-                      <div className="flex items-center gap-2">
-                        <div className="w-7 h-7 rounded-lg bg-blue-600/20 text-blue-400 flex items-center justify-center text-xs font-bold">
-                          ✓
+              <div className="space-y-3">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {wallet?.credentials && wallet.credentials.length > 0 ? (
+                    wallet.credentials.map((cred, i) => (
+                      <div
+                        key={i}
+                        className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 hover:border-slate-700 transition-all space-y-2.5"
+                      >
+                        <div className="flex items-start justify-between">
+                          <div className="flex items-center gap-2">
+                            <div className="w-8 h-8 rounded-lg bg-blue-600/20 text-blue-400 flex items-center justify-center text-sm font-bold">
+                              {cred.issuer_role === 'GOVERNMENT' ? '🏛️' : (cred.issuer_role === 'EMPLOYER' ? '🏢' : '🆔')}
+                            </div>
+                            <div>
+                              <h4 className="text-sm font-semibold text-white">{cred.title}</h4>
+                              <div className="flex items-center gap-1.5 mt-0.5">
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 font-medium">
+                                  {cred.type}
+                                </span>
+                                {cred.issuer_role && (
+                                  <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
+                                    cred.issuer_role === 'GOVERNMENT'
+                                      ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
+                                      : cred.issuer_role === 'EMPLOYER'
+                                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                                      : 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+                                  }`}>
+                                    {cred.issuer_role}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
+                            cred.status === 'VALID'
+                              ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+                              : 'bg-rose-500/15 text-rose-400 border border-rose-500/30'
+                          }`}>
+                            {cred.status}
+                          </span>
                         </div>
-                        <div>
-                          <h4 className="text-sm font-semibold text-white">{cred.title}</h4>
-                          <span className="text-[11px] text-slate-400">{cred.type}</span>
+
+                        {cred.skills && cred.skills.length > 0 && (
+                          <div className="flex flex-wrap gap-1 pt-1">
+                            {cred.skills.map((s, idx) => (
+                              <span key={idx} className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-cyan-300 border border-slate-700">
+                                {s}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+
+                        <div className="text-[11px] text-slate-400 pt-2 border-t border-slate-900 flex items-center justify-between">
+                          <span className="truncate max-w-[180px]">Issuer: {cred.issuer}</span>
+                          <span className="text-blue-400 font-mono text-[10px]">Verified SSI ✓</span>
                         </div>
                       </div>
-                      <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
-                        {cred.status}
-                      </span>
+                    ))
+                  ) : (
+                    <div className="col-span-2 text-center py-6 text-slate-400">
+                      <p className="text-xs">No extra credentials issued yet. Government and employers can issue verified credentials to your wallet.</p>
                     </div>
-                    {cred.bocw_id && (
-                      <div className="text-[11px] text-cyan-300 font-mono">
-                        Reg ID: {cred.bocw_id}
-                      </div>
-                    )}
-                    <div className="text-[11px] text-slate-400 pt-1 border-t border-slate-900 flex justify-between">
-                      <span>Issuer: {cred.issuer}</span>
-                      <span className="text-blue-400 font-mono">On-Chain ✓</span>
-                    </div>
-                  </div>
-                ))}
+                  )}
+                </div>
               </div>
             ) : (
               <div className="text-center py-8 text-slate-400 space-y-2">

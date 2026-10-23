@@ -45,7 +45,7 @@ echo.
 echo =====================================================================
 echo [SUCCESS] PassKhadam Portable Executable Built Successfully!
 echo Artifact Path:
-echo %~dp0frontend\dist-electron\PassKhadam-Portable-0.2.0.exe
+echo %~dp0frontend\dist-electron\PassKhadam-Portable-0.4.0.exe
 echo =====================================================================
 echo.
 pause

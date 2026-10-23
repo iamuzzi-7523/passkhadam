@@ -1,3 +1,4 @@
+import json
 import hashlib
 import secrets
 import uuid
@@ -14,7 +15,9 @@ from app.models.db import (
     DBEmployerOrganization,
     DBCategoryAuthorizationRequest,
     DBActivationEmail,
-    DBGovernanceAuditLog
+    DBGovernanceAuditLog,
+    DBWorkerCredential,
+    DBWorkerProfile
 )
 from app.models.schemas import (
     CategoryRequest,
@@ -23,7 +26,9 @@ from app.models.schemas import (
     EmployerRegister,
     EmployerActivationRequest,
     EmployerActivationResponse,
-    CategoryAuthorizationRequestResponse
+    CategoryAuthorizationRequestResponse,
+    CredentialIssueRequest,
+    CredentialResponse
 )
 from app.core.auth import get_current_user
 from app.services.blockchain_service import blockchain_service
@@ -730,4 +735,69 @@ def update_status(
         }
     except (ValueError, PermissionError) as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/credentials/issue", response_model=CredentialResponse)
+def issue_employer_credential(
+    req: CredentialIssueRequest,
+    current_user: DBUser = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Allows approved Employers to issue Trade Experience, Competency, and Site Induction credentials
+    to a worker's DID wallet.
+    """
+    if current_user.role != "EMPLOYER":
+        raise HTTPException(status_code=403, detail="Unauthorized: Only employers can issue trade/experience credentials")
+
+    org = db.query(DBEmployerOrganization).filter(DBEmployerOrganization.user_id == current_user.id).first()
+    if not org and current_user.organization_address:
+        org = db.query(DBEmployerOrganization).filter(DBEmployerOrganization.org_address == current_user.organization_address).first()
+
+    if org and org.status not in ["APPROVED", "ACTIVE"]:
+        raise HTTPException(status_code=403, detail="Employer organization must be APPROVED or ACTIVE to issue credentials")
+
+    issuer_name = req.issuer_name or (org.name if org else None) or current_user.organization_name or current_user.full_name or "Approved Employer"
+    issuer_addr = (org.org_address if org else None) or current_user.organization_address or "0xemp_official"
+
+    worker = db.query(DBWorkerProfile).filter(DBWorkerProfile.did == req.worker_did).first()
+    if not worker:
+        raise HTTPException(status_code=404, detail="Worker with specified DID not found")
+
+    cred_uuid = f"cred-emp-{uuid.uuid4().hex[:10]}"
+    expires_at = datetime.utcnow() + timedelta(days=req.valid_days or 365)
+
+    new_cred = DBWorkerCredential(
+        credential_id=cred_uuid,
+        worker_did=req.worker_did,
+        worker_id=worker.id,
+        title=req.title,
+        credential_type=req.credential_type or "Experience",
+        issuer_name=issuer_name,
+        issuer_address=issuer_addr,
+        issuer_role="EMPLOYER",
+        status="VALID",
+        skills_json=json.dumps(req.skills or []),
+        metadata_json=json.dumps(req.metadata or {}),
+        created_at=datetime.utcnow(),
+        expires_at=expires_at
+    )
+    db.add(new_cred)
+    db.commit()
+    db.refresh(new_cred)
+
+    return CredentialResponse(
+        id=new_cred.credential_id,
+        title=new_cred.title,
+        type=new_cred.credential_type,
+        issuer=new_cred.issuer_name,
+        issuer_role="EMPLOYER",
+        status="VALID",
+        worker_did=new_cred.worker_did,
+        skills=req.skills or [],
+        metadata=req.metadata or {},
+        anchored=True,
+        created_at=new_cred.created_at.strftime("%Y-%m-%d"),
+        expires_at=new_cred.expires_at.strftime("%Y-%m-%d") if new_cred.expires_at else None
+    )
 

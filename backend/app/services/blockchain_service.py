@@ -2,6 +2,8 @@ import os
 import json
 import time
 import hashlib
+import logging
+logger = logging.getLogger('blockchain_service')
 from typing import Dict, Any, List, Optional
 from web3 import Web3
 
@@ -469,7 +471,7 @@ class BlockchainService:
 
             # Also sync active government officers into self.organizations
             try:
-                from app.models.db import DBGovernmentOfficer
+                from app.models.db import DBGovernmentOfficer, DBEmployment, DBWelfareClaim
                 active_officers = db.query(DBGovernmentOfficer).filter(
                     DBGovernmentOfficer.status.in_(["ACTIVE", "APPROVED"])
                 ).all()
@@ -487,8 +489,54 @@ class BlockchainService:
                             "natures": [],
                             "registered_at": int(time.time())
                         }
+
+                # Hydrate employments from database
+                db_emps = db.query(DBEmployment).all()
+                for de in db_emps:
+                    self.employments[de.id] = {
+                        "id": de.id,
+                        "worker_did": de.worker_did,
+                        "employer_address": de.employer_address,
+                        "employer_name": de.employer_name,
+                        "category": de.category,
+                        "level": de.level,
+                        "nature_of_employment": de.nature_of_employment,
+                        "job_role": de.job_role,
+                        "location": de.location,
+                        "start_date": de.start_date,
+                        "end_date": de.end_date,
+                        "status": de.status,
+                        "status_reason": de.status_reason or "Historical Stint",
+                        "tx_hash": de.tx_hash
+                    }
+                    if de.id >= self.next_emp_id:
+                        self.next_emp_id = de.id + 1
+
+                # Hydrate welfare claims from database
+                db_claims = db.query(DBWelfareClaim).all()
+                for dc in db_claims:
+                    self.claims[dc.id] = {
+                        "claim_id": dc.id,
+                        "sha256_claim_id": dc.claim_id_hex or f"claim_{dc.id}",
+                        "scheme_id": dc.scheme_id,
+                        "scheme_name": dc.scheme_name or "Welfare Scheme",
+                        "worker_did": dc.worker_did,
+                        "gov_officer": dc.gov_address,
+                        "officer_state": dc.officer_state,
+                        "amount": 0,
+                        "timestamp": dc.disbursed_at,
+                        "is_disbursed": True
+                    }
+                    if dc.worker_did not in self.last_claim_times:
+                        self.last_claim_times[dc.worker_did] = {}
+                    self.last_claim_times[dc.worker_did][dc.scheme_id] = max(
+                        self.last_claim_times[dc.worker_did].get(dc.scheme_id, 0),
+                        dc.disbursed_at
+                    )
+                    if dc.id >= self.next_claim_id:
+                        self.next_claim_id = dc.id + 1
             except Exception as e:
-                logger.warning(f"Failed to sync government officers from database: {e}")
+                logger.warning(f"Failed to sync state from database: {e}")
         finally:
             if close_db:
                 db.close()
@@ -776,11 +824,11 @@ class BlockchainService:
             except Exception:
                 pass
         org = self.organizations.get(address)
-        cat_clean = (category or "").strip().lower()
-        if not org or not any(c.strip().lower() == cat_clean for c in org.get("categories", [])):
+        if not org:
             org = self._sync_org_from_db(address)
         if not org or org.get("status") not in ["APPROVED", "ACTIVE"]:
             return False
+        cat_clean = (category or "").strip().lower()
         return any(c.strip().lower() == cat_clean for c in org.get("categories", []))
 
     def get_organization_categories(self, address: str) -> List[str]:
@@ -863,6 +911,35 @@ class BlockchainService:
             "reason": "Employment Created",
             "timestamp": int(time.time())
         }]
+        try:
+            from app.models.db import SessionLocal, DBEmployment
+            db = SessionLocal()
+            try:
+                db_emp = DBEmployment(
+                    worker_did=worker_did,
+                    employer_address=employer_address,
+                    employer_name=record["employer_name"],
+                    category=category,
+                    level=level,
+                    nature_of_employment=nature_of_employment,
+                    job_role=job_role,
+                    location=location,
+                    start_date=record["start_date"],
+                    end_date=record["end_date"],
+                    status="ACTIVE",
+                    status_reason="Stint Initiated"
+                )
+                db.add(db_emp)
+                db.commit()
+                db.refresh(db_emp)
+                record["id"] = db_emp.id
+                if emp_id != db_emp.id and emp_id in self.employments:
+                    del self.employments[emp_id]
+                self.employments[db_emp.id] = record
+            finally:
+                db.close()
+        except Exception as e:
+            logger.warning(f"Failed to persist DBEmployment: {e}")
         return record
 
     def update_employment_status(self, emp_id: int, caller_address: str, new_status: str, reason: str):
@@ -890,7 +967,45 @@ class BlockchainService:
 
     def get_worker_employments(self, worker_did: str) -> List[Dict[str, Any]]:
         # Returns all historical and active employments (immutable history)
-        return [emp for emp in self.employments.values() if emp["worker_did"] == worker_did]
+        seen_ids = set()
+        results = []
+        for emp in list(self.employments.values()):
+            if emp.get("worker_did") == worker_did:
+                eid = emp.get("id")
+                if eid and eid not in seen_ids:
+                    seen_ids.add(eid)
+                    results.append(emp)
+        try:
+            from app.models.db import SessionLocal, DBEmployment
+            db = SessionLocal()
+            try:
+                db_emps = db.query(DBEmployment).filter(DBEmployment.worker_did == worker_did).all()
+                for de in db_emps:
+                    if de.id not in seen_ids:
+                        seen_ids.add(de.id)
+                        rec = {
+                            "id": de.id,
+                            "worker_did": de.worker_did,
+                            "employer_address": de.employer_address,
+                            "employer_name": de.employer_name,
+                            "category": de.category,
+                            "level": de.level,
+                            "nature_of_employment": de.nature_of_employment,
+                            "job_role": de.job_role,
+                            "location": de.location,
+                            "start_date": de.start_date,
+                            "end_date": de.end_date,
+                            "status": de.status,
+                            "status_reason": de.status_reason or "Historical Stint",
+                            "tx_hash": de.tx_hash
+                        }
+                        results.append(rec)
+                        self.employments[de.id] = rec
+            finally:
+                db.close()
+        except Exception as e:
+            logger.warning(f"Failed to rehydrate DBEmployment for {worker_did}: {e}")
+        return results
 
     def get_active_workforce(self, employer_address: str) -> List[Dict[str, Any]]:
         # Returns only actively employed workers on employer roster
@@ -938,9 +1053,70 @@ class BlockchainService:
         if worker_did not in self.last_claim_times:
             self.last_claim_times[worker_did] = {}
         self.last_claim_times[worker_did][scheme_id] = now
+
+        try:
+            from app.models.db import SessionLocal, DBWelfareClaim
+            db = SessionLocal()
+            try:
+                db_claim = DBWelfareClaim(
+                    scheme_id=scheme_id,
+                    scheme_name=claim["scheme_name"],
+                    worker_did=worker_did,
+                    gov_address=gov_address,
+                    officer_state=officer_state,
+                    claim_id_hex=sha256_claim_id,
+                    claim_hash=sha256_claim_id,
+                    disbursed_at=now
+                )
+                db.add(db_claim)
+                db.commit()
+                db.refresh(db_claim)
+                claim["claim_id"] = db_claim.id
+                if claim_id != db_claim.id and claim_id in self.claims:
+                    del self.claims[claim_id]
+                self.claims[db_claim.id] = claim
+            finally:
+                db.close()
+        except Exception as e:
+            logger.warning(f"Failed to persist DBWelfareClaim: {e}")
         return claim
 
     def get_worker_claims(self, worker_did: str) -> List[Dict[str, Any]]:
-        return [c for c in self.claims.values() if c["worker_did"] == worker_did]
+        seen_hashes = set()
+        results = []
+        for c in list(self.claims.values()):
+            if c.get("worker_did") == worker_did:
+                h = c.get("sha256_claim_id") or c.get("claim_id")
+                if h not in seen_hashes:
+                    seen_hashes.add(h)
+                    results.append(c)
+        try:
+            from app.models.db import SessionLocal, DBWelfareClaim
+            db = SessionLocal()
+            try:
+                db_claims = db.query(DBWelfareClaim).filter(DBWelfareClaim.worker_did == worker_did).all()
+                for dc in db_claims:
+                    h = dc.claim_id_hex or f"claim_{dc.id}"
+                    if h not in seen_hashes:
+                        seen_hashes.add(h)
+                        c_dict = {
+                            "claim_id": dc.id,
+                            "sha256_claim_id": h,
+                            "scheme_id": dc.scheme_id,
+                            "scheme_name": dc.scheme_name or "Welfare Scheme",
+                            "worker_did": dc.worker_did,
+                            "gov_officer": dc.gov_address,
+                            "officer_state": dc.officer_state,
+                            "amount": 0,
+                            "timestamp": dc.disbursed_at,
+                            "is_disbursed": True
+                        }
+                        results.append(c_dict)
+                        self.claims[dc.id] = c_dict
+            finally:
+                db.close()
+        except Exception as e:
+            logger.warning(f"Failed to rehydrate DBWelfareClaim for {worker_did}: {e}")
+        return results
 
 blockchain_service = BlockchainService()

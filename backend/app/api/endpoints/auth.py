@@ -230,17 +230,24 @@ def register_user(
                 existing.organization_status = req.organization_status or existing.organization_status or "APPROVED"
             elif existing.role == "WORKER":
                 profile = db.query(DBWorkerProfile).filter(DBWorkerProfile.user_id == existing.id).first()
+                worker_cat = getattr(req, "worker_category", None) or "Mason"
+                worker_skills = getattr(req, "skills", None) or [worker_cat]
                 if not profile:
                     profile = DBWorkerProfile(
                         user_id=existing.id,
                         full_name=existing.full_name,
-                        origin_state="Karnataka",
-                        current_state="Karnataka",
-                        worker_category="Mason"
+                        origin_state=getattr(req, "origin_state", None) or "Karnataka",
+                        current_state=getattr(req, "current_state", None) or "Karnataka",
+                        worker_category=worker_cat,
+                        skills_json=json.dumps(worker_skills)
                     )
                     db.add(profile)
                 else:
                     profile.full_name = existing.full_name
+                    if getattr(req, "worker_category", None):
+                        profile.worker_category = req.worker_category
+                    if getattr(req, "skills", None):
+                        profile.skills_json = json.dumps(req.skills)
 
             db.commit()
             db.refresh(existing)
@@ -334,12 +341,15 @@ def register_user(
 
     # If worker, create worker profile
     if new_user.role == "WORKER":
+        worker_cat = getattr(req, "worker_category", None) or "Mason"
+        worker_skills = getattr(req, "skills", None) or [worker_cat]
         profile = DBWorkerProfile(
             user_id=new_user.id,
             full_name=new_user.full_name,
-            origin_state="Karnataka",
-            current_state="Karnataka",
-            worker_category="Mason"
+            origin_state=getattr(req, "origin_state", None) or "Karnataka",
+            current_state=getattr(req, "current_state", None) or "Karnataka",
+            worker_category=worker_cat,
+            skills_json=json.dumps(worker_skills)
         )
         db.add(profile)
         db.commit()
@@ -474,12 +484,15 @@ def login_user(
             db.refresh(user)
 
             if user_role == "WORKER":
+                worker_cat = getattr(req, "worker_category", None) or "Mason"
+                worker_skills = getattr(req, "skills", None) or [worker_cat]
                 profile = DBWorkerProfile(
                     user_id=user.id,
                     full_name=user.full_name,
-                    origin_state="Karnataka",
-                    current_state="Karnataka",
-                    worker_category="Mason"
+                    origin_state=getattr(req, "origin_state", None) or "Karnataka",
+                    current_state=getattr(req, "current_state", None) or "Karnataka",
+                    worker_category=worker_cat,
+                    skills_json=json.dumps(worker_skills)
                 )
                 db.add(profile)
                 db.commit()

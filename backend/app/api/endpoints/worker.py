@@ -208,7 +208,7 @@ def serialize_worker_profile(profile: DBWorkerProfile, db: Optional[Session] = N
 
 def serialize_worker_wallet(profile: DBWorkerProfile, db: Optional[Session] = None) -> dict:
     """Canonical serialization for worker wallet, credentials, employments, and claims."""
-    skills_list = ["Mason"]
+    skills_list = [profile.worker_category or "Mason"]
     if profile.skills_json:
         try:
             skills_list = json.loads(profile.skills_json)
@@ -225,37 +225,43 @@ def serialize_worker_wallet(profile: DBWorkerProfile, db: Optional[Session] = No
             "title": "Government Identity Credential",
             "type": "Worker Identity Credential",
             "issuer": "Aadhaar Identity Gateway",
+            "issuer_role": "AADHAAR",
             "status": gov_cred_status,
             "did": profile.did,
             "ipfs_cid": profile.ipfs_cid,
             "anchored": True
         })
-        credentials.append({
-            "id": "cred-id-02",
-            "title": "BOCW Safety Certification",
-            "type": "Safety Credential",
-            "issuer": "Building & Other Construction Workers Board",
-            "status": "VALID",
-            "bocw_id": f"BOCW-{profile.origin_state[:2].upper() if profile.origin_state else 'KA'}-2026-9921",
-            "anchored": True
-        })
-        credentials.append({
-            "id": "cred-id-03",
-            "title": "Certified Trade Skill Credential",
-            "type": "Skill Credential",
-            "issuer": "National Skill Development Authority",
-            "status": "VALID",
-            "skills": skills_list,
-            "anchored": True
-        })
-        credentials.append({
-            "id": "cred-id-04",
-            "title": "Workplace Safety Induction",
-            "type": "Induction Credential",
-            "issuer": "Central Labour Welfare Board",
-            "status": "VALID",
-            "anchored": True
-        })
+
+        # Query dynamic credentials issued to this worker
+        if db is not None and profile.did:
+            from app.models.db import DBWorkerCredential
+            db_creds = db.query(DBWorkerCredential).filter(DBWorkerCredential.worker_did == profile.did).all()
+            for dc in db_creds:
+                c_skills = []
+                if dc.skills_json:
+                    try:
+                        c_skills = json.loads(dc.skills_json)
+                    except Exception:
+                        c_skills = [dc.skills_json]
+                c_meta = {}
+                if dc.metadata_json:
+                    try:
+                        c_meta = json.loads(dc.metadata_json)
+                    except Exception:
+                        pass
+                credentials.append({
+                    "id": dc.credential_id or f"cred-{dc.id}",
+                    "title": dc.title,
+                    "type": dc.credential_type,
+                    "issuer": dc.issuer_name,
+                    "issuer_role": dc.issuer_role or "GOVERNMENT",
+                    "status": dc.status,
+                    "skills": c_skills,
+                    "metadata": c_meta,
+                    "anchored": True,
+                    "created_at": dc.created_at.strftime("%Y-%m-%d") if dc.created_at else None,
+                    "expires_at": dc.expires_at.strftime("%Y-%m-%d") if dc.expires_at else None
+                })
 
     employments = []
     claims = []
@@ -460,7 +466,7 @@ def execute_aadhaar_verification(profile: DBWorkerProfile, req: AadhaarVerifyReq
 
     # 5. Stage 3: VC_ISSUED (Construct RFC 8785 W3C VC, Sign, Encrypt, and Pin to IPFS)
     try:
-        skills_list = ["Mason", "Plumbing Assistance"]
+        skills_list = [profile.worker_category or "Mason"]
         if profile.skills_json:
             try:
                 skills_list = json.loads(profile.skills_json)
@@ -630,7 +636,7 @@ def register_worker_account(
                 origin_state=req.origin_state or "Karnataka",
                 current_state=req.current_state or "Karnataka",
                 worker_category=req.worker_category or "Mason",
-                skills_json=json.dumps(req.skills or ["Mason", "Plumbing Assistance"]),
+                skills_json=json.dumps(req.skills or [req.worker_category or "Mason"]),
                 did_state="NOT_STARTED"
             )
             db.add(profile)
@@ -699,7 +705,7 @@ def register_worker_account(
         origin_state=req.origin_state or "Karnataka",
         current_state=req.current_state or "Karnataka",
         worker_category=req.worker_category or "Mason",
-        skills_json=json.dumps(req.skills or ["Mason", "Plumbing Assistance"]),
+        skills_json=json.dumps(req.skills or [req.worker_category or "Mason"]),
         did_state="NOT_STARTED"
     )
     db.add(profile)

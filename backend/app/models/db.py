@@ -486,6 +486,77 @@ class DBConsumedPresentationNonce(Base):
 
 
 # ============================================================================
+# 10. DYNAMIC WORKER CREDENTIALS (DBWorkerCredential)
+# ============================================================================
+
+class DBWorkerCredential(Base):
+    __tablename__ = "worker_credentials"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    credential_id = Column(String(100), unique=True, index=True, nullable=False)
+    worker_did = Column(String(100), index=True, nullable=False)
+    worker_id = Column(Integer, ForeignKey("worker_profiles.id"), nullable=True, index=True)
+    title = Column(String(150), nullable=False)
+    credential_type = Column(String(100), nullable=False) # Identity, Safety, Skill, Experience, Welfare, Induction
+    issuer_name = Column(String(150), nullable=False)
+    issuer_address = Column(String(100), nullable=True, index=True)
+    issuer_role = Column(String(50), nullable=False) # GOVERNMENT | EMPLOYER | AADHAAR | ADMIN
+    status = Column(String(50), default="VALID", nullable=False, index=True) # VALID | REVOKED | EXPIRED
+    revocation_reason = Column(Text, nullable=True)
+    skills_json = Column(Text, nullable=True) # JSON array of skills e.g. ["Electrician", "Solar Wiring"]
+    metadata_json = Column(Text, nullable=True) # JSON key-value custom attributes
+    ipfs_cid = Column(String(100), nullable=True)
+    tx_hash = Column(String(128), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    expires_at = Column(DateTime, nullable=True)
+
+
+# ============================================================================
+# 11. IMMUTABLE PORTABLE EMPLOYMENTS (DBEmployment)
+# ============================================================================
+
+class DBEmployment(Base):
+    __tablename__ = "employments"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    worker_did = Column(String(100), index=True, nullable=False)
+    employer_address = Column(String(100), index=True, nullable=False)
+    employer_name = Column(String(150), nullable=False)
+    category = Column(String(100), nullable=False, index=True)
+    level = Column(String(50), default="Skilled", nullable=False)
+    nature_of_employment = Column(String(50), default="Contract", nullable=False)
+    job_role = Column(String(150), nullable=False)
+    location = Column(String(150), nullable=False)
+    start_date = Column(Integer, nullable=False) # Unix timestamp
+    end_date = Column(Integer, default=0, nullable=False) # Unix timestamp
+    status = Column(String(50), default="ACTIVE", nullable=False, index=True) # ACTIVE | COMPLETED | TERMINATED | RESIGNED | DISMISSED
+    status_reason = Column(String(255), default="Stint Initiated", nullable=True)
+    tx_hash = Column(String(128), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+
+# ============================================================================
+# 12. WELFARE SCHEME CLAIMS (DBWelfareClaim)
+# ============================================================================
+
+class DBWelfareClaim(Base):
+    __tablename__ = "welfare_claims"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    scheme_id = Column(Integer, nullable=False, index=True)
+    scheme_name = Column(String(150), nullable=True)
+    worker_did = Column(String(100), index=True, nullable=False)
+    gov_address = Column(String(100), index=True, nullable=False)
+    officer_state = Column(String(100), nullable=False)
+    claim_id_hex = Column(String(128), nullable=True, index=True)
+    claim_hash = Column(String(128), nullable=True)
+    tx_hash = Column(String(128), nullable=True)
+    disbursed_at = Column(Integer, nullable=False) # Unix timestamp
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+# ============================================================================
 # DATABASE INITIALIZATION & PARTIAL INDEX MIGRATION
 # ============================================================================
 
@@ -663,6 +734,11 @@ def init_db():
                 conn.commit()
             except Exception as pg_err:
                 logger.warning(f"PostgreSQL trigger initialization warning: {pg_err}")
+
+try:
+    Base.metadata.create_all(bind=engine)
+except Exception:
+    pass
 
 def get_db():
     db = SessionLocal()

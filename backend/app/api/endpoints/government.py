@@ -2,7 +2,7 @@ import json
 import time
 import uuid
 import hashlib
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException, UploadFile, File, Depends, Header, Query, status
@@ -15,7 +15,9 @@ from app.models.db import (
     DBGovernmentOfficer,
     DBActivationEmail,
     DBGovernanceAuditLog,
-    DBAdminAuditLog
+    DBAdminAuditLog,
+    DBWorkerCredential,
+    DBWorkerProfile
 )
 from app.models.schemas import (
     WelfareClaimRequest,
@@ -23,7 +25,9 @@ from app.models.schemas import (
     GovernmentActivationStatusResponse,
     DisputeCreateRequest,
     DisputeResolutionRequest,
-    DisputeResolutionResponse
+    DisputeResolutionResponse,
+    CredentialIssueRequest,
+    CredentialResponse
 )
 from app.core.auth import get_current_user, get_current_government_officer
 from app.services.blockchain_service import blockchain_service
@@ -632,5 +636,63 @@ def resolve_employment_dispute(
         settlement_amount_inr=req.settlement_amount_inr or 0.0,
         adjudicated_by=current_user.full_name or current_user.email,
         adjudicated_at=datetime.utcnow()
+    )
+
+
+@router.post("/credentials/issue", response_model=CredentialResponse)
+def issue_government_credential(
+    req: CredentialIssueRequest,
+    current_user: DBUser = Depends(get_current_government_officer),
+    db: Session = Depends(get_db)
+):
+    """
+    Allows authorized Government Officers to issue official W3C Verifiable Credentials
+    (e.g., BOCW Social Security, Trade Skill Certification, Health/Safety Clearance, Inter-State Migrant Permit)
+    directly to a worker's DID wallet.
+    """
+    officer = db.query(DBGovernmentOfficer).filter(DBGovernmentOfficer.user_id == current_user.id).first()
+    issuer_name = req.issuer_name or (officer.department if officer else None) or current_user.full_name or "Government Authority"
+    issuer_addr = (officer.wallet_address if officer else None) or current_user.organization_address or "0xgov_official"
+
+    # Verify worker exists and is valid
+    worker = db.query(DBWorkerProfile).filter(DBWorkerProfile.did == req.worker_did).first()
+    if not worker:
+        raise HTTPException(status_code=404, detail="Worker with specified DID not found")
+
+    cred_uuid = f"cred-gov-{uuid.uuid4().hex[:10]}"
+    expires_at = datetime.utcnow() + timedelta(days=req.valid_days or 365)
+
+    new_cred = DBWorkerCredential(
+        credential_id=cred_uuid,
+        worker_did=req.worker_did,
+        worker_id=worker.id,
+        title=req.title,
+        credential_type=req.credential_type or "Welfare",
+        issuer_name=issuer_name,
+        issuer_address=issuer_addr,
+        issuer_role="GOVERNMENT",
+        status="VALID",
+        skills_json=json.dumps(req.skills or []),
+        metadata_json=json.dumps(req.metadata or {}),
+        created_at=datetime.utcnow(),
+        expires_at=expires_at
+    )
+    db.add(new_cred)
+    db.commit()
+    db.refresh(new_cred)
+
+    return CredentialResponse(
+        id=new_cred.credential_id,
+        title=new_cred.title,
+        type=new_cred.credential_type,
+        issuer=new_cred.issuer_name,
+        issuer_role="GOVERNMENT",
+        status="VALID",
+        worker_did=new_cred.worker_did,
+        skills=req.skills or [],
+        metadata=req.metadata or {},
+        anchored=True,
+        created_at=new_cred.created_at.strftime("%Y-%m-%d"),
+        expires_at=new_cred.expires_at.strftime("%Y-%m-%d") if new_cred.expires_at else None
     )
 

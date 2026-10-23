@@ -17,6 +17,8 @@ export default function AuthModal({ isOpen, onClose, onRoleSelect, initialTab = 
   const [regPhone, setRegPhone] = useState('+91 98765 43210');
   const [regPassword, setRegPassword] = useState('');
   const [regRole, setRegRole] = useState('WORKER'); // WORKER or EMPLOYER only
+  const [workerCategory, setWorkerCategory] = useState('Mason');
+  const [workerOriginState, setWorkerOriginState] = useState('Karnataka');
   
   // Employer Org fields
   const [orgName, setOrgName] = useState('');
@@ -224,6 +226,10 @@ export default function AuthModal({ isOpen, onClose, onRoleSelect, initialTab = 
       phone: regPhone,
       password: regPassword,
       role: regRole,
+      worker_category: regRole === 'WORKER' ? workerCategory : null,
+      skills: regRole === 'WORKER' ? [workerCategory] : null,
+      origin_state: regRole === 'WORKER' ? workerOriginState : null,
+      current_state: regRole === 'WORKER' ? 'Karnataka' : null,
       organization_name: regRole === 'EMPLOYER' ? orgName : null,
       organization_status: regRole === 'EMPLOYER' ? 'PENDING_REVIEW' : 'APPROVED',
       registration_number: regRole === 'EMPLOYER' ? (orgRegNo || 'REG-' + Date.now()) : null,
@@ -551,6 +557,53 @@ export default function AuthModal({ isOpen, onClose, onRoleSelect, initialTab = 
                   />
                 </div>
               </div>
+
+              {/* Worker Trade and Origin State */}
+              {regRole === 'WORKER' && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 rounded-xl bg-slate-950 border border-slate-800/80">
+                  <div>
+                    <label className="block text-[11px] font-medium text-slate-400 mb-1">Trade / Profession</label>
+                    <select
+                      value={workerCategory}
+                      onChange={(e) => setWorkerCategory(e.target.value)}
+                      className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-slate-200 focus:outline-none focus:border-blue-500"
+                    >
+                      <option value="Mason">Mason (Bricklayer & Concreting)</option>
+                      <option value="Electrician">Electrician (Wiring & Maintenance)</option>
+                      <option value="Plumber">Plumber (Pipefitting & Drainage)</option>
+                      <option value="Carpenter">Carpenter (Formwork & Woodwork)</option>
+                      <option value="Painter">Painter (Finishing & Coating)</option>
+                      <option value="Welder">Welder (Arc, Gas & Structural)</option>
+                      <option value="Heavy Machinery Operator">Heavy Machinery Operator</option>
+                      <option value="Driver">Commercial Driver / Logistics</option>
+                      <option value="Steel Fixer">Steel Fixer & Barbender</option>
+                      <option value="Tile Setter">Tile & Marble Flooring Setter</option>
+                      <option value="General Construction">General Construction Labour</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-medium text-slate-400 mb-1">Home / Origin State</label>
+                    <select
+                      value={workerOriginState}
+                      onChange={(e) => setWorkerOriginState(e.target.value)}
+                      className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-xs text-slate-200 focus:outline-none focus:border-blue-500"
+                    >
+                      <option value="Karnataka">Karnataka</option>
+                      <option value="Bihar">Bihar</option>
+                      <option value="Uttar Pradesh">Uttar Pradesh</option>
+                      <option value="West Bengal">West Bengal</option>
+                      <option value="Odisha">Odisha</option>
+                      <option value="Maharashtra">Maharashtra</option>
+                      <option value="Kerala">Kerala</option>
+                      <option value="Rajasthan">Rajasthan</option>
+                      <option value="Tamil Nadu">Tamil Nadu</option>
+                      <option value="Madhya Pradesh">Madhya Pradesh</option>
+                      <option value="Assam">Assam</option>
+                      <option value="Jharkhand">Jharkhand</option>
+                    </select>
+                  </div>
+                </div>
+              )}
 
               {/* Email Verification Section */}
               <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800/80 space-y-3">

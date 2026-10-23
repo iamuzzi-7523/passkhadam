@@ -90,34 +90,14 @@ export default function Header({ currentRole, onRoleChange, currentLang, onLangC
             {/* Global Controls: Wallet, Network, Language, Auth */}
             <div className="flex items-center flex-wrap gap-2 text-xs">
               
-              {/* Web3 / MetaMask Wallet Button */}
-              <button
-                onClick={() => setIsWalletOpen(true)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border transition ${
-                  isConnected
-                    ? 'bg-amber-950/30 border-amber-500/40 text-amber-300 hover:bg-amber-900/40'
-                    : 'bg-slate-800 hover:bg-slate-750 border-slate-700 text-slate-300'
-                }`}
-                title="Connect Live MetaMask or Web3 Wallet"
+              {/* Cloud Staging Status Badge */}
+              <div
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800/80 border border-slate-700/60 text-slate-300 shadow-sm"
+                title="Connected to PassKhadam Cloud Staging (Ethereum Sepolia & IPFS)"
               >
-                <Wallet className="w-3.5 h-3.5 text-amber-400" />
-                <span className="font-mono text-[11px]">
-                  {isConnected ? `${account?.slice(0, 6)}...${account?.slice(-4)}` : getTranslation(currentLang, 'connectWallet')}
-                </span>
-                {isConnected && (
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                )}
-              </button>
-
-              {/* Network & IPFS Status / Config Modal Trigger */}
-              <button
-                onClick={() => setIsNetworkOpen(true)}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-800 border border-slate-700/60 text-slate-300 transition"
-                title="Configure Blockchain Networks & IPFS Providers"
-              >
-                <Server className="w-3.5 h-3.5 text-cyan-400" />
-                <span className="font-mono text-[11px] hidden sm:inline">EVM: 1337 • IPFS</span>
-              </button>
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span className="font-mono text-[11px] font-medium text-slate-200">Cloud Staging • Sepolia</span>
+              </div>
 
               {/* Language Selector Dropdown */}
               <div className="relative">

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Landmark, ShieldCheck, AlertTriangle, CheckCircle, FileText, 
-  MapPin, Coins, RefreshCw, Send, CheckCircle2, History, BadgeCheck, User
+  MapPin, Coins, RefreshCw, Send, CheckCircle2, History, BadgeCheck, User, Award
 } from 'lucide-react';
 import QRImageUploader from '../common/QRImageUploader';
 import VerificationStepper from '../common/VerificationStepper';
@@ -20,6 +20,10 @@ export default function GovernmentPortal({ currentLang = 'en' }) {
   const [disbursing, setDisbursing] = useState(false);
   const [actionMsg, setActionMsg] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
+  const [credTitle, setCredTitle] = useState("BOCW Social Security Welfare Card");
+  const [credType, setCredType] = useState("Welfare");
+  const [credSkills, setCredSkills] = useState("");
+  const [issuingCred, setIssuingCred] = useState(false);
 
   const fetchGovData = async () => {
     try {
@@ -101,6 +105,36 @@ export default function GovernmentPortal({ currentLang = 'en' }) {
       setErrorMsg(err.message);
     } finally {
       setDisbursing(false);
+    }
+  };
+
+  const handleIssueGovernmentCredential = async (e) => {
+    e.preventDefault();
+    if (!verifiedResult) return;
+    setIssuingCred(true);
+    setActionMsg("");
+    setErrorMsg("");
+
+    try {
+      const res = await apiFetch("/api/v1/government/credentials/issue", {
+        method: "POST",
+        body: {
+          worker_did: verifiedResult.worker_did,
+          title: credTitle,
+          credential_type: credType,
+          skills: credSkills ? credSkills.split(',').map(s => s.trim()).filter(Boolean) : [credTitle],
+          valid_days: 365
+        }
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.detail || "Failed to issue credential");
+      }
+      setActionMsg(`Official Verifiable Credential "${data.title}" successfully issued and anchored to worker DID!`);
+    } catch (err) {
+      setErrorMsg(err.message || "Failed to issue credential");
+    } finally {
+      setIssuingCred(false);
     }
   };
 
@@ -362,6 +396,64 @@ export default function GovernmentPortal({ currentLang = 'en' }) {
                     <span>Disburse Benefit Claim on Blockchain</span>
                   </>
                 )}
+              </button>
+            </div>
+          </div>
+
+          {/* Issue Verifiable Credential Panel */}
+          <div className="bg-slate-950/90 border border-slate-800 rounded-2xl p-5 space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
+              <div className="flex items-center gap-2">
+                <Award className="w-5 h-5 text-amber-400" />
+                <h4 className="font-bold text-white text-sm">Issue Verifiable Credential to Worker Wallet</h4>
+              </div>
+              <span className="text-[11px] text-slate-400">Signed Official Credential</span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+              <div>
+                <label className="block text-[11px] text-slate-400 mb-1">Credential Title</label>
+                <input
+                  type="text"
+                  value={credTitle}
+                  onChange={(e) => setCredTitle(e.target.value)}
+                  placeholder="e.g. BOCW Social Security Card"
+                  className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-slate-200"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] text-slate-400 mb-1">Credential Type</label>
+                <select
+                  value={credType}
+                  onChange={(e) => setCredType(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-slate-200"
+                >
+                  <option value="Welfare">Welfare Registration (BOCW)</option>
+                  <option value="Skill">Trade Skill Certification (NSDC)</option>
+                  <option value="Safety">Workplace Safety Induction</option>
+                  <option value="Permit">Inter-State Migrant Work Permit</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-[11px] text-slate-400 mb-1">Certified Skills / Attributes</label>
+                <input
+                  type="text"
+                  value={credSkills}
+                  onChange={(e) => setCredSkills(e.target.value)}
+                  placeholder="e.g. Masonry, Scaffolding, Bricklaying"
+                  className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs text-slate-200"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-1">
+              <button
+                onClick={handleIssueGovernmentCredential}
+                disabled={issuingCred}
+                className="py-2.5 px-5 bg-amber-600 hover:bg-amber-500 text-white rounded-xl font-bold text-xs shadow-md transition-all flex items-center gap-2 disabled:opacity-50"
+              >
+                {issuingCred ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Award className="w-4 h-4" />}
+                <span>Issue & Anchor Credential on Blockchain</span>
               </button>
             </div>
           </div>

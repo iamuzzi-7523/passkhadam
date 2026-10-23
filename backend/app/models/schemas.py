@@ -25,6 +25,10 @@ class UserRegister(BaseModel):
     business_type: Optional[str] = None
     nature_of_business: Optional[str] = None
     contact_person: Optional[str] = None
+    worker_category: Optional[str] = None
+    skills: Optional[List[str]] = None
+    origin_state: Optional[str] = None
+    current_state: Optional[str] = None
 
     @model_validator(mode="before")
     @classmethod
@@ -195,6 +199,29 @@ class WorkerLifecycleStatusResponse(BaseModel):
     failure_reason: Optional[str] = None
     steps_completed: List[str]
     allowed_next_actions: List[str]
+
+class CredentialIssueRequest(BaseModel):
+    worker_did: str
+    title: str
+    credential_type: str = "Skill" # Identity, Safety, Skill, Experience, Welfare, Induction
+    issuer_name: Optional[str] = None
+    skills: Optional[List[str]] = None
+    metadata: Optional[Dict[str, Any]] = None
+    valid_days: Optional[int] = 365
+
+class CredentialResponse(BaseModel):
+    id: str
+    title: str
+    type: str
+    issuer: str
+    issuer_role: str
+    status: str
+    worker_did: str
+    skills: Optional[List[str]] = None
+    metadata: Optional[Dict[str, Any]] = None
+    anchored: bool = True
+    created_at: Optional[str] = None
+    expires_at: Optional[str] = None
 
 class EmployerRegister(BaseModel):
     company_name: str
