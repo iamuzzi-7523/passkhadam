@@ -11,9 +11,9 @@ import json
 client = TestClient(app)
 
 def test_target_account_clean_registration_and_login():
-    """Verify target account mohammeduzzi0987@gmail.com can register and login cleanly."""
-    target_email = "mohammeduzzi0987@gmail.com"
-    target_uid = "uid_mohammeduzzi0987_test"
+    """Verify target account passkhadam@gmail.com can register and login cleanly."""
+    target_email = "passkhadam@gmail.com"
+    target_uid = "uid_passkhadam_test"
     target_pw = "UzairPass2026!"
 
     # Ensure clean slate in DB
