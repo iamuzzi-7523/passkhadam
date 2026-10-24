@@ -11,6 +11,7 @@ import time
 import base64
 import uuid
 import hashlib
+import re
 import numpy as np
 import cv2
 import qrcode
@@ -832,11 +833,13 @@ class CommonVerificationEngine:
                                 if getattr(worker_profile, "block", None):
                                     worker_blocks.append(worker_profile.block)
                                 if getattr(worker_profile, "address", None):
-                                    addr_lower = str(worker_profile.address).lower()
-                                    if officer.district and officer.district.strip().lower() in addr_lower:
-                                        worker_districts.append(officer.district)
-                                    if officer.block and officer.block.strip().lower() in addr_lower:
-                                        worker_blocks.append(officer.block)
+                                    addr_str = str(worker_profile.address)
+                                    d_m = re.search(r'district\s+([^,]+)', addr_str, re.IGNORECASE)
+                                    if d_m:
+                                        worker_districts.append(d_m.group(1).strip())
+                                    b_m = re.search(r'block\s+([^,]+)', addr_str, re.IGNORECASE)
+                                    if b_m:
+                                        worker_blocks.append(b_m.group(1).strip())
 
                             # From presentation claims (vc_body / payload)
                             if vc_body:
@@ -851,11 +854,13 @@ class CommonVerificationEngine:
                                 if vc_body.get("block"):
                                     worker_blocks.append(vc_body.get("block"))
                                 if vc_body.get("address"):
-                                    addr_lower = str(vc_body.get("address")).lower()
-                                    if officer.district and officer.district.strip().lower() in addr_lower:
-                                        worker_districts.append(officer.district)
-                                    if officer.block and officer.block.strip().lower() in addr_lower:
-                                        worker_blocks.append(officer.block)
+                                    addr_str = str(vc_body.get("address"))
+                                    d_m = re.search(r'district\s+([^,]+)', addr_str, re.IGNORECASE)
+                                    if d_m:
+                                        worker_districts.append(d_m.group(1).strip())
+                                    b_m = re.search(r'block\s+([^,]+)', addr_str, re.IGNORECASE)
+                                    if b_m:
+                                        worker_blocks.append(b_m.group(1).strip())
 
                             # Also inspect active on-chain employment locations for this worker
                             if worker_did:

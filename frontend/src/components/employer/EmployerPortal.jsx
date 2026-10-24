@@ -144,11 +144,17 @@ export default function EmployerPortal({ currentLang = 'en' }) {
     e.preventDefault();
     if (!verifiedResult) return;
 
+    const targetWorkerDid = verifiedResult.worker_did || verifiedResult.data?.worker_did || verifiedResult.did;
+    if (!targetWorkerDid) {
+      alert("Worker DID could not be determined from the scanned verification record");
+      return;
+    }
+
     try {
       const res = await apiFetch("/api/v1/employer/create-employment", {
         method: "POST",
         body: {
-          worker_did: verifiedResult.worker_did,
+          worker_did: targetWorkerDid,
           category: selectedCategory,
           level: selectedLevel,
           nature_of_employment: selectedNature,
@@ -174,11 +180,19 @@ export default function EmployerPortal({ currentLang = 'en' }) {
     setIssuingCred(true);
     setActionMsg("");
     setCredError("");
+
+    const targetWorkerDid = verifiedResult.worker_did || verifiedResult.data?.worker_did || verifiedResult.did;
+    if (!targetWorkerDid) {
+      setCredError("Worker DID could not be determined from the scanned verification record");
+      setIssuingCred(false);
+      return;
+    }
+
     try {
       const res = await apiFetch("/api/v1/employer/credentials/issue", {
         method: "POST",
         body: {
-          worker_did: verifiedResult.worker_did,
+          worker_did: targetWorkerDid,
           title: credTitle,
           credential_type: credType,
           skills: credSkills ? credSkills.split(',').map(s => s.trim()).filter(Boolean) : [credTitle],

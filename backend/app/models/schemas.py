@@ -321,7 +321,7 @@ class WelfareClaimRequest(BaseModel):
     scheme_id: int
     worker_did: str
     officer_state: str
-    gov_officer_wallet: Optional[str] = "0x15d34AAf54267DB7D7c367839AAf71A00a2C6A65"
+    gov_officer_wallet: Optional[str] = None
     officer_wallet: Optional[str] = None
 
 # Admin Schemas

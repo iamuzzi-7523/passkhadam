@@ -8,6 +8,7 @@ import json
 import base64
 import uuid
 import hashlib
+import time
 from typing import Optional, List, Dict, Any, Tuple
 from fastapi import APIRouter, Depends, HTTPException, Response, Header, status, Request
 from sqlalchemy.orm import Session, object_session
@@ -238,11 +239,11 @@ def _ensure_worker_ipfs_credential(profile: DBWorkerProfile, db: Session) -> Non
                     try:
                         inner_vc = decrypt_payload(existing)
                         if inner_vc.get("credentialSubject", {}).get("id") == profile.did:
-                            # Genuine credential payload: heal profile.credential_hash and cache
-                            new_hash = keccak_hash(existing)
-                            profile.credential_hash = new_hash
-                            db.commit()
-                            db.refresh(profile)
+                            new_hash = profile.credential_hash or keccak_hash(existing)
+                            if not profile.credential_hash:
+                                profile.credential_hash = new_hash
+                                db.commit()
+                                db.refresh(profile)
                             if profile.did in blockchain_service.worker_registry:
                                 blockchain_service.worker_registry[profile.did]["ipfs_cid"] = profile.ipfs_cid
                                 blockchain_service.worker_registry[profile.did]["credential_hash"] = new_hash
@@ -288,8 +289,12 @@ def _ensure_worker_ipfs_credential(profile: DBWorkerProfile, db: Session) -> Non
         new_cid = ipfs_service.pin_payload(encrypted_blob)
         cred_hash = keccak_hash(encrypted_blob)
 
-        profile.ipfs_cid = new_cid
-        profile.credential_hash = cred_hash
+        if not profile.ipfs_cid:
+            profile.ipfs_cid = new_cid
+        if not profile.credential_hash:
+            profile.credential_hash = cred_hash
+        else:
+            cred_hash = profile.credential_hash
         db.commit()
         db.refresh(profile)
 

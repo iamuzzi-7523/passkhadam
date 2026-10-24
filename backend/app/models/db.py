@@ -74,6 +74,18 @@ class DBUser(Base):
     employer_organization = relationship("DBEmployerOrganization", back_populates="user", uselist=False, cascade="all, delete-orphan", foreign_keys="DBEmployerOrganization.user_id")
     government_officer = relationship("DBGovernmentOfficer", back_populates="user", uselist=False, cascade="all, delete-orphan", foreign_keys="DBGovernmentOfficer.user_id")
 
+    @property
+    def is_active(self) -> bool:
+        return self.status == "ACTIVE"
+
+    @is_active.setter
+    def is_active(self, val: bool):
+        if not val:
+            self.status = "INACTIVE"
+        elif not self.status:
+            self.status = "ACTIVE"
+
+
 # Canonical Alias as mandated by PassKhadam v0.4 Architecture Specification
 PassKhadamUser = DBUser
 

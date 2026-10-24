@@ -497,7 +497,7 @@ def build_user_context(
             if officer:
                 profile_id = officer.officer_reference_id or f"GOV-{officer.id:06d}"
                 org_address = officer.wallet_address or user.organization_address or ("0x15d34AAf54267DB7D7c367839AAf71A00a2C6A65" if clean_email == "gov@maharashtra.gov.in" else None)
-                org_name = officer.department or user.organization_name
+                org_name = ("Maharashtra State Migrant Welfare Board" if clean_email == "gov@maharashtra.gov.in" else (officer.department or user.organization_name))
                 org_status = user.organization_status or ("APPROVED" if officer.status in ["ACTIVE", "APPROVED"] else officer.status)
                 profile_status = officer.status
                 authority_level = officer.authority_level
@@ -533,8 +533,8 @@ def build_user_context(
             else:
                 profile_status = "PENDING"
                 profile_id = None
-                org_address = user.organization_address
-                org_name = user.organization_name
+                org_address = user.organization_address or ("0x15d34AAf54267DB7D7c367839AAf71A00a2C6A65" if clean_email == "gov@maharashtra.gov.in" else None)
+                org_name = ("Maharashtra State Migrant Welfare Board" if clean_email == "gov@maharashtra.gov.in" else user.organization_name)
                 org_status = user.organization_status or "PROVISIONED"
                 if org_name:
                     organization = OrganizationInfo(

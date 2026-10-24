@@ -725,6 +725,9 @@ export default function AdminPortal({ currentLang = 'en' }) {
             reason: suspendReason
           }
         });
+        if (!res.ok) {
+          throw new Error(`PATCH failed with status ${res.status}`);
+        }
       } catch (patchErr) {
         // Fallback to POST for network/runtime environments restricting HTTP PATCH
         res = await apiFetch(`/api/v1/admin/category-requests/${selectedCatReq.id}`, {

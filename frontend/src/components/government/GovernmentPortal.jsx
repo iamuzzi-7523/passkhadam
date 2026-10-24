@@ -82,6 +82,13 @@ export default function GovernmentPortal({ currentLang = 'en' }) {
     setActionMsg("");
     setErrorMsg("");
 
+    const targetWorkerDid = verifiedResult.worker_did || verifiedResult.data?.worker_did || verifiedResult.did;
+    if (!targetWorkerDid) {
+      setErrorMsg("Worker DID could not be determined from the scanned verification record");
+      setDisbursing(false);
+      return;
+    }
+
     try {
       const officerState = officerProfile?.state || govInfo?.state || "Maharashtra";
       const officerWallet = officerProfile?.wallet_address || govInfo?.address;
@@ -89,7 +96,7 @@ export default function GovernmentPortal({ currentLang = 'en' }) {
         method: "POST",
         body: {
           scheme_id: Number(selectedScheme),
-          worker_did: verifiedResult.worker_did,
+          worker_did: targetWorkerDid,
           officer_state: officerState,
           officer_wallet: officerWallet,
           gov_officer_wallet: officerWallet
@@ -115,11 +122,18 @@ export default function GovernmentPortal({ currentLang = 'en' }) {
     setActionMsg("");
     setErrorMsg("");
 
+    const targetWorkerDid = verifiedResult.worker_did || verifiedResult.data?.worker_did || verifiedResult.did;
+    if (!targetWorkerDid) {
+      setErrorMsg("Worker DID could not be determined from the scanned verification record");
+      setIssuingCred(false);
+      return;
+    }
+
     try {
       const res = await apiFetch("/api/v1/government/credentials/issue", {
         method: "POST",
         body: {
-          worker_did: verifiedResult.worker_did,
+          worker_did: targetWorkerDid,
           title: credTitle,
           credential_type: credType,
           skills: credSkills ? credSkills.split(',').map(s => s.trim()).filter(Boolean) : [credTitle],
